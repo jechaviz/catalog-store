@@ -44,13 +44,19 @@ export function useColorExtraction(imageUrl: string | null): ColorData | null {
 
             const hsl = rgbToHsl(r, g, b);
 
-            // Ignorar colores que son muy blancos (l > 85), muy oscuros (l < 15), o grises/desaturados (s < 15)
-            // Esto asegura que la UI no extraiga el fondo blanco de las imágenes
-            if (hsl.l > 85 || hsl.l < 15 || hsl.s < 15) continue;
+            // Ignorar colores muy blancos (l > 85), muy oscuros (l < 15), o grises/desaturados (s < 20)
+            if (hsl.l > 85 || hsl.l < 15 || hsl.s < 20) continue;
 
-            // Agrupar colores similares
+            // Agrupar colores similares (redondeando cada 10 para hacer rangos más amplios)
             const key = `${Math.round(r / 10) * 10},${Math.round(g / 10) * 10},${Math.round(b / 10) * 10}`;
-            colorMap[key] = (colorMap[key] || 0) + 1;
+
+            // PESO DINÁMICO: Dar ventaja matemática masiva a los colores vibrantes
+            // Si el color es rico y saturado (como dorado, rojo, azul fuerte), vale X veces más.
+            let weight = 1;
+            if (hsl.s > 60) weight = 5;      // Súper vibrante = 5x
+            else if (hsl.s > 35) weight = 2; // Color normal = 2x
+
+            colorMap[key] = (colorMap[key] || 0) + weight;
           }
 
           // Encontrar el color con mayor puntuación

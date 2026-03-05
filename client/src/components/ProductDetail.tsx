@@ -30,14 +30,14 @@ export function ProductDetail({
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent showCloseButton={false} className="max-w-none sm:max-w-none md:max-w-none lg:max-w-none w-screen h-[100dvh] m-0 p-0 rounded-none border-none bg-background shadow-none overflow-y-auto overflow-x-hidden">
-                <div className="w-full min-h-[100dvh] relative flex flex-col items-center p-4 sm:p-6 md:p-8 lg:p-12 overflow-x-hidden">
+                <div className="w-full min-h-[100dvh] relative flex flex-col items-center p-4 sm:p-6 md:p-8 lg:p-12 overflow-x-hidden animate-in fade-in zoom-in-95 duration-700 ease-out">
 
                     {/* Close Button */}
                     <button
                         onClick={onClose}
-                        className="fixed top-6 right-6 z-50 p-3 bg-white/50 backdrop-blur-md hover:bg-white/80 transition-colors rounded-full shadow-lg"
+                        className="fixed top-6 right-6 z-50 p-3 bg-white/60 backdrop-blur-xl hover:bg-white/90 border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-300 hover:scale-110 rounded-full group"
                     >
-                        <X className="w-6 h-6 text-foreground" />
+                        <X className="w-6 h-6 text-slate-700 group-hover:text-black transition-colors" />
                     </button>
 
                     {/* SVG Decorative Elements */}
@@ -137,15 +137,15 @@ export function ProductDetail({
                             {/* Left side - Content */}
                             <div className="flex flex-col justify-center order-2 lg:order-1 min-w-0 pb-20 lg:pb-0">
                                 <div className="mb-6 lg:mb-8">
-                                    <h1 className="display text-4xl sm:text-5xl md:text-6xl font-extrabold mb-2 leading-tight animate-fade-in break-words text-foreground drop-shadow-sm">
+                                    <h1 className="display text-4xl sm:text-5xl md:text-6xl font-black mb-3 leading-tight animate-fade-in break-words text-slate-800 tracking-tight drop-shadow-sm">
                                         {product.name}
                                     </h1>
-                                    <p className="heading text-base sm:text-lg md:text-xl font-bold animate-fade-in break-words tracking-wide uppercase" style={{ color: primaryColor, animationDelay: '0.1s' }}>
+                                    <p className="heading text-base sm:text-lg md:text-xl font-extrabold animate-fade-in break-words tracking-widest uppercase opacity-90" style={{ color: primaryColor, animationDelay: '0.1s' }}>
                                         {product.brand} {product.subBrand}
                                     </p>
                                 </div>
 
-                                <p className="body text-base sm:text-lg md:text-xl text-foreground/80 mb-6 lg:mb-8 leading-relaxed animate-fade-in break-words" style={{ animationDelay: '0.2s' }}>
+                                <p className="body text-base sm:text-lg md:text-xl font-medium text-slate-600 mb-6 lg:mb-8 leading-relaxed animate-fade-in break-words" style={{ animationDelay: '0.2s' }}>
                                     {product.description}
                                 </p>
 
@@ -154,10 +154,10 @@ export function ProductDetail({
                                         {product.benefits.map((benefit, idx) => (
                                             <li key={idx} className="flex items-start gap-3 min-w-0">
                                                 <span
-                                                    className="w-2.5 h-2.5 rounded-full mt-2 flex-shrink-0 animate-pulse"
+                                                    className="w-2.5 h-2.5 rounded-full mt-2 flex-shrink-0 animate-pulse shadow-sm"
                                                     style={{ backgroundColor: primaryColor }}
                                                 />
-                                                <span className="body text-base sm:text-lg text-foreground/80 break-words">{benefit}</span>
+                                                <span className="body font-medium text-base sm:text-lg text-slate-700 break-words">{benefit}</span>
                                             </li>
                                         ))}
                                     </ul>
@@ -166,16 +166,15 @@ export function ProductDetail({
                                 {/* Price badge and Buttons Container */}
                                 <div className="flex flex-wrap items-center gap-6 animate-fade-in" style={{ animationDelay: '0.4s' }}>
                                     <div
-                                        className="inline-flex flex-col items-center justify-center px-8 lg:px-10 py-5 lg:py-6 rounded-[2rem] shadow-xl w-fit transform hover:scale-105 transition-transform duration-300"
+                                        className="inline-flex flex-col items-center justify-center px-8 lg:px-10 py-5 lg:py-6 rounded-[2rem] w-fit transform hover:scale-105 transition-all duration-300 backdrop-blur-2xl bg-white/70 border border-white/60"
                                         style={{
-                                            backgroundColor: lightColor,
-                                            boxShadow: `0 20px 40px ${primaryColor}25, inset 0 2px 10px rgba(255,255,255,0.5)`,
+                                            boxShadow: `0 20px 40px ${primaryColor}20, inset 0 2px 15px rgba(255,255,255,0.8)`,
                                         }}
                                     >
-                                        <span className="heading text-xs lg:text-sm uppercase tracking-widest font-bold mb-1" style={{ color: primaryColor }}>
+                                        <span className="heading text-xs lg:text-sm uppercase tracking-widest font-extrabold mb-1" style={{ color: primaryColor }}>
                                             A sólo
                                         </span>
-                                        <span className="display text-3xl lg:text-4xl font-black drop-shadow-sm" style={{ color: primaryColor }}>
+                                        <span className="display text-3xl lg:text-4xl font-black drop-shadow-sm text-slate-800">
                                             ${product.price.toFixed(2)}
                                         </span>
                                     </div>
@@ -223,15 +222,15 @@ export function ProductDetail({
                                 />
 
                                 {/* Image container with glow and rounded borders */}
-                                <div className="relative z-10 w-48 h-48 sm:w-72 sm:h-72 md:w-80 md:h-80 lg:w-[400px] lg:h-[400px] rounded-[45%] p-2 sm:p-3 lg:p-4 backdrop-blur-md bg-white/40 shadow-2xl animate-float">
+                                <div className="relative z-10 w-48 h-48 sm:w-72 sm:h-72 md:w-80 md:h-80 lg:w-[400px] lg:h-[400px] rounded-[45%] p-2 sm:p-3 lg:p-4 backdrop-blur-2xl bg-white/60 border border-white/60 shadow-[0_20px_50px_rgba(0,0,0,0.15),inset_0_2px_20px_rgba(255,255,255,0.8)] animate-float">
                                     <div
-                                        className="absolute inset-0 rounded-[45%] opacity-50 blur-lg transition-colors duration-1000"
+                                        className="absolute inset-0 rounded-[45%] opacity-50 blur-xl transition-colors duration-1000 mix-blend-multiply"
                                         style={{ backgroundColor: primaryColor }}
                                     />
                                     <img
                                         src={product.imageUrl}
                                         alt={product.name}
-                                        className="relative z-20 w-full h-full object-cover rounded-[45%] shadow-[inset_0_0_20px_rgba(0,0,0,0.1)] transition-transform duration-700 hover:scale-105"
+                                        className="relative z-20 w-full h-full object-cover rounded-[45%] drop-shadow-2xl transition-transform duration-700 hover:scale-[1.08]"
                                         onError={(e) => {
                                             (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=Natura';
                                         }}
