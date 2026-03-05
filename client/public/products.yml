@@ -1,0 +1,155 @@
+# Catálogo Natura 2026
+# Estructura principal
+categories:
+  - id: "perfumeria"
+    name: "Perfumería"
+  - id: "cuerpo-y-bano"
+    name: "Cuerpo y Baño"
+  - id: "rostro"
+    name: "Rostro"
+  - id: "maquillaje"
+    name: "Maquillaje"
+  - id: "cabello"
+    name: "Cabello"
+  - id: "hombres"
+    name: "Cuidado Masculino"
+
+products:
+  # Perfumería Masculina
+  - id: "kaiak-urbe-masculino"
+    name: "Kaiak Urbe"
+    brand: "Natura"
+    subBrand: "Kaiak"
+    categoryId: "perfumeria"
+    gender: "male"
+    description: "Desodorante colonia masculino 100ml. Aromático herbal moderado, ideal para el día a día. Una fragancia que te invita al movimiento al aire libre."
+    benefits:
+      - "Fragancia fresca y envolvente"
+      - "Ideal para el uso diario"
+      - "100% alcohol orgánico"
+    price: 699.00
+    imageUrl: "/perfume_masc.png"
+    inStock: true
+    deliveryTime: "Entrega Inmediata"
+    deliveryMethods:
+      - "Entrega personal"
+      - "Envío por paquetería"
+    paymentLink: "https://link.mercadopago.com.mx/kaiak-ejemplo"
+
+  # Perfumería Femenina
+  - id: "essencial-exclusivo-femenino"
+    name: "Essencial Exclusivo"
+    brand: "Natura"
+    subBrand: "Essencial"
+    categoryId: "perfumeria"
+    gender: "female"
+    description: "Eau de parfum femenino 50ml. Floral dulce, intenso. Una fragancia envolvente y elegante para ocasiones especiales."
+    benefits:
+      - "Alta concentración de fragancia"
+      - "Larga duración en la piel"
+      - "Notas florales exclusivas"
+    price: 990.00
+    imageUrl: "/perfume_fem.png"
+    inStock: false
+    deliveryTime: "Sobre pedido (3 a 5 días hábiles)"
+    deliveryMethods:
+      - "Entrega personal"
+      - "Envío express"
+
+  # Cuerpo y Baño (Unisex)
+  - id: "pulpa-manos-castana"
+    name: "Pulpa hidratante para manos"
+    brand: "Natura"
+    subBrand: "Ekos Castaña"
+    categoryId: "cuerpo-y-bano"
+    gender: "unisex"
+    description: "Pulpa nutritiva para manos 75g. Nutrición intensa con aceite de castaña, rico en omega 6 y 9."
+    benefits:
+      - "Nutrición profunda hasta por las capas más profundas"
+      - "Rápida absorción, no deja la piel oleosa"
+      - "Fortalece las uñas"
+    price: 195.00
+    imageUrl: "/crema_manos.png"
+    inStock: true
+    deliveryTime: "Entrega Inmediata"
+    deliveryMethods:
+      - "Entrega personal"
+
+  # Cuerpo y Baño Femenino
+  - id: "crema-corporal-frutos-rojos"
+    name: "Crema nutritiva para el cuerpo"
+    brand: "Natura"
+    subBrand: "Tododia Frutos Rojos"
+    categoryId: "cuerpo-y-bano"
+    gender: "female"
+    description: "Crema nutritiva 400ml. Nutrición prebiótica que se adapta a lo que tu piel necesita. Fragancia refrescante."
+    benefits:
+      - "Acción prebiótica: alimenta la flora de la piel"
+      - "Piel más firme y ultra suave todos los días"
+      - "Textura cremosa y de rápida absorción"
+    price: 260.00
+    imageUrl: "/crema_manos.png"
+    inStock: true
+    deliveryTime: "Entrega Inmediata"
+    deliveryMethods:
+      - "Entrega personal"
+      - "Envío por paquetería"
+
+  # Rostro Femenino
+  - id: "chronos-serum-intensivo"
+    name: "Sérum intensivo antioxidante"
+    brand: "Natura"
+    subBrand: "Chronos"
+    categoryId: "rostro"
+    gender: "female"
+    description: "Sérum intensivo 15ml. Con extracto de ingá, el triple de vitamina C y ácido ferúlico. Previene signos de envejecimiento temprano."
+    benefits:
+      - "Piel revitalizada y luminosa"
+      - "Combate radicales libres"
+      - "Uniformiza el tono de la piel"
+    price: 750.00
+    imageUrl: "/crema_manos.png"
+    inStock: true
+    deliveryTime: "Entrega hoy mismo (Solo envíos locales)"
+    deliveryMethods:
+      - "Envío local express (Mismo día)"
+
+  # Maquillaje Femenino
+  - id: "una-labial-cc-hidratante"
+    name: "Labial CC Hidratante FPS 25"
+    brand: "Natura"
+    subBrand: "Una"
+    categoryId: "maquillaje"
+    gender: "female"
+    description: "Labial 3.8g. Color intenso, hidratación prolongada y FPS 25. Trata tus labios mientras te maquillas."
+    benefits:
+      - "Contiene ceramidas para hidratación"
+      - "Alta cobertura en la primera pasada"
+      - "Protección solar FPS 25"
+    price: 285.00
+    imageUrl: "/perfume_fem.png"
+    inStock: false
+    deliveryTime: "Sobre pedido (2 a 4 días hábiles)"
+    deliveryMethods:
+      - "Entrega personal"
+      - "Envío por paquetería"
+
+  # Cuidado Masculino
+  - id: "homem-crema-afeitar"
+    name: "Crema de Afeitar"
+    brand: "Natura"
+    subBrand: "Homem"
+    categoryId: "hombres"
+    gender: "male"
+    description: "Crema de afeitar 75g. Facilita el deslizamiento de la hoja y calma la piel. Aroma amaderado elegante."
+    benefits:
+      - "No reseca la piel"
+      - "Deslizar fácil y seguro de las navajas"
+      - "Calma irritaciones post afeitado"
+    price: 180.00
+    imageUrl: "/perfume_masc.png"
+    inStock: true
+    deliveryTime: "Entrega Inmediata"
+    deliveryMethods:
+      - "Entrega personal"
+      - "Contra Entrega"
