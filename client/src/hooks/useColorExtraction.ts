@@ -160,6 +160,16 @@ export function getDarkerShade(hex: string, amount: number = 20): string {
   return hslToHex(hsl.h, hsl.s, darkerL);
 }
 
+export function getAnalogousColor(hex: string, hueOffset: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+
+  const hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+  const newHue = (hsl.h + hueOffset + 360) % 360;
+
+  return hslToHex(newHue, hsl.s, hsl.l);
+}
+
 function hexToRgb(hex: string): [number, number, number] | null {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
