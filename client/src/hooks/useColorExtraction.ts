@@ -167,7 +167,12 @@ export function getAnalogousColor(hex: string, hueOffset: number): string {
   const hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
   const newHue = (hsl.h + hueOffset + 360) % 360;
 
-  return hslToHex(newHue, hsl.s, hsl.l);
+  // Ensure background colors stay vibrant and don't turn gray
+  // We keep the saturation high (at least 60%) and the luminosity in a middle range
+  const newSaturation = Math.max(hsl.s, 60);
+  const newLuminosity = Math.min(Math.max(hsl.l, 30), 70);
+
+  return hslToHex(newHue, newSaturation, newLuminosity);
 }
 
 function hexToRgb(hex: string): [number, number, number] | null {

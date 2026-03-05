@@ -1,6 +1,7 @@
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Heart, ShoppingBag, X } from 'lucide-react';
+import { useLocation } from "wouter";
 import { useColorExtraction, getLighterShade, getDarkerShade, getAnalogousColor } from '@/hooks/useColorExtraction';
 import type { CatalogProduct } from '@/lib/dataFetcher';
 
@@ -21,6 +22,7 @@ export function ProductDetail({
     isLiked,
     onToggleLike,
 }: ProductDetailProps) {
+    const [_, setLocation] = useLocation();
     const colorData = useColorExtraction(product?.imageUrl || '');
     const primaryColor = colorData?.hex || '#F97316';
     const lightColor = getLighterShade(primaryColor, 35);
@@ -31,6 +33,13 @@ export function ProductDetail({
     const analogousColor2 = getAnalogousColor(primaryColor, -35);
 
     if (!product) return null;
+
+    const handleDirectCheckout = () => {
+        onBuy(product);
+        setTimeout(() => {
+            setLocation('/checkout');
+        }, 800);
+    };
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -61,7 +70,7 @@ export function ProductDetail({
                         <path
                             d="M 850,80 Q 950,50 1050,120 Q 1150,200 1100,300 Q 1050,380 950,350 Q 850,320 850,200 Z"
                             fill={analogousColor1}
-                            opacity="0.15"
+                            opacity="0.25"
                             filter="url(#blur-heavy)"
                             className="animate-pulse"
                         />
@@ -70,19 +79,22 @@ export function ProductDetail({
                         <path
                             d="M 50,550 Q 30,650 100,720 Q 200,780 300,700 Q 350,620 280,550 Q 150,480 50,550 Z"
                             fill={analogousColor2}
-                            opacity="0.18"
+                            opacity="0.28"
                             filter="url(#blur-heavy)"
                             className="animate-pulse"
                             style={{ animationDelay: '1.5s' }}
                         />
 
+                        {/* Center-left extra blob */}
+                        <circle cx="150" cy="300" r="120" fill={primaryColor} opacity="0.12" filter="url(#blur-heavy)" className="animate-pulse" />
+
                         {/* Curved line top */}
                         <path
                             d="M 0,0 Q 300,80 600,20 T 1200,0"
                             stroke={analogousColor1}
-                            strokeWidth="2"
+                            strokeWidth="3"
                             fill="none"
-                            opacity="0.30"
+                            opacity="0.4"
                             strokeLinecap="round"
                         />
 
@@ -90,9 +102,9 @@ export function ProductDetail({
                         <path
                             d="M 1000,0 Q 1100,150 1050,300"
                             stroke={primaryColor}
-                            strokeWidth="3"
+                            strokeWidth="4"
                             fill="none"
-                            opacity="0.25"
+                            opacity="0.35"
                             strokeLinecap="round"
                             className="animate-pulse"
                         />
@@ -100,9 +112,9 @@ export function ProductDetail({
 
                     {/* Decorative dots pattern - animated */}
                     <div className="absolute top-4 right-4 sm:top-8 sm:right-8 md:top-12 md:right-12 space-y-2 sm:space-y-3 z-20">
-                        {[...Array(5)].map((_, row) => (
+                        {[...Array(6)].map((_, row) => (
                             <div key={row} className="flex gap-2 sm:gap-3">
-                                {[...Array(4)].map((_, col) => {
+                                {[...Array(5)].map((_, col) => {
                                     // Alternating colors for a playful grid
                                     const colors = [primaryColor, analogousColor1, primaryColor, analogousColor2];
                                     const dotColor = colors[(row + col) % colors.length];
@@ -110,10 +122,10 @@ export function ProductDetail({
                                     return (
                                         <div
                                             key={col}
-                                            className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 rounded-full animate-bounce"
+                                            className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 rounded-full animate-bounce"
                                             style={{
                                                 backgroundColor: dotColor,
-                                                opacity: 0.5,
+                                                opacity: 0.6,
                                                 animationDelay: `${(row + col) * 0.15}s`,
                                             }}
                                         />
@@ -124,20 +136,20 @@ export function ProductDetail({
                     </div>
 
                     {/* Decorative ingredients/shapes - top left */}
-                    <div className="absolute top-0 left-0 w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 opacity-30 pointer-events-none">
+                    <div className="absolute top-0 left-0 w-32 h-32 sm:w-40 sm:h-40 md:w-56 md:h-56 opacity-40 pointer-events-none">
                         <svg viewBox="0 0 200 200" className="w-full h-full animate-float">
-                            <ellipse cx="40" cy="40" rx="20" ry="30" fill={analogousColor2} opacity="0.6" transform="rotate(-30 40 40)" />
-                            <ellipse cx="80" cy="30" rx="18" ry="28" fill={primaryColor} opacity="0.5" transform="rotate(20 80 30)" />
-                            <circle cx="50" cy="80" r="15" fill={analogousColor1} opacity="0.4" />
+                            <ellipse cx="40" cy="40" rx="25" ry="35" fill={analogousColor2} opacity="0.75" transform="rotate(-30 40 40)" />
+                            <ellipse cx="90" cy="35" rx="22" ry="32" fill={primaryColor} opacity="0.65" transform="rotate(20 90 35)" />
+                            <circle cx="55" cy="100" r="20" fill={analogousColor1} opacity="0.55" />
                         </svg>
                     </div>
 
                     {/* Decorative ingredients/shapes - bottom right */}
-                    <div className="absolute bottom-0 right-0 w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 opacity-25 pointer-events-none">
+                    <div className="absolute bottom-0 right-0 w-32 h-32 sm:w-40 sm:h-40 md:w-56 md:h-56 opacity-35 pointer-events-none">
                         <svg viewBox="0 0 200 200" className="w-full h-full animate-float" style={{ animationDelay: '0.5s' }}>
-                            <circle cx="150" cy="150" r="25" fill={analogousColor1} opacity="0.5" />
-                            <circle cx="100" cy="170" r="20" fill={analogousColor2} opacity="0.4" />
-                            <path d="M 170,100 Q 180,120 170,140 Q 160,130 170,100" fill={primaryColor} opacity="0.3" />
+                            <circle cx="160" cy="160" r="35" fill={analogousColor1} opacity="0.65" />
+                            <circle cx="110" cy="180" r="28" fill={analogousColor2} opacity="0.55" />
+                            <path d="M 180,110 Q 190,130 180,150 Q 170,140 180,110" fill={primaryColor} opacity="0.45" />
                         </svg>
                     </div>
 
@@ -197,28 +209,36 @@ export function ProductDetail({
 
                                         <div className="flex flex-col gap-3">
                                             <Button
-                                                onClick={(e) => {
-                                                    onBuy(product);
-                                                    // Local "dance" trigger
-                                                    const btn = e.currentTarget;
-                                                    btn.classList.add('animate-bounce');
-                                                    setTimeout(() => btn.classList.remove('animate-bounce'), 800);
-                                                }}
-                                                className="rounded-full w-14 h-14 md:w-16 md:h-16 p-0 flex items-center justify-center bg-primary hover:bg-primary/90 text-white shadow-xl hover:shadow-primary/40 transition-all group/buy"
-                                                title="Añadir al carrito"
+                                                onClick={handleDirectCheckout}
+                                                className="rounded-full px-8 py-6 bg-slate-900 hover:bg-black text-white shadow-xl hover:shadow-slate-500/30 transition-all font-bold tracking-wide uppercase text-sm"
                                             >
-                                                <ShoppingBag className="w-8 h-8 group-hover/buy:-rotate-12 transition-transform" />
+                                                Comprar ahora
                                             </Button>
-                                            <Button
-                                                onClick={onToggleLike}
-                                                variant="outline"
-                                                className="rounded-full px-8 py-6 border-primary/20 bg-white/50 hover:bg-red-50 transition-all flex items-center justify-center gap-2 group/like"
-                                            >
-                                                <Heart className={`w-5 h-5 transition-transform group-hover/like:scale-110 ${isLiked ? 'fill-red-500 text-red-500' : 'text-primary'}`} />
-                                                <span className={`font-semibold heading ${isLiked ? 'text-red-500' : 'text-primary'}`}>
-                                                    {isLiked ? 'En tus favoritos' : 'Me encanta'}
-                                                </span>
-                                            </Button>
+                                            <div className="flex items-center gap-3">
+                                                <Button
+                                                    onClick={(e) => {
+                                                        onBuy(product);
+                                                        // Local "dance" trigger
+                                                        const btn = e.currentTarget;
+                                                        btn.classList.add('animate-bounce');
+                                                        setTimeout(() => btn.classList.remove('animate-bounce'), 800);
+                                                    }}
+                                                    className="rounded-full w-14 h-14 md:w-16 md:h-16 p-0 flex items-center justify-center bg-primary hover:bg-primary/90 text-white shadow-xl hover:shadow-primary/40 transition-all group/buy"
+                                                    title="Añadir al carrito"
+                                                >
+                                                    <ShoppingBag className="w-8 h-8 group-hover/buy:-rotate-12 transition-transform" />
+                                                </Button>
+                                                <Button
+                                                    onClick={onToggleLike}
+                                                    variant="outline"
+                                                    className="rounded-full px-8 py-6 border-primary/20 bg-white/50 hover:bg-red-50 transition-all flex items-center justify-center gap-2 group/like h-14 md:h-16"
+                                                >
+                                                    <Heart className={`w-5 h-5 transition-transform group-hover/like:scale-110 ${isLiked ? 'fill-red-500 text-red-500' : 'text-primary'}`} />
+                                                    <span className={`font-semibold heading ${isLiked ? 'text-red-500' : 'text-primary'}`}>
+                                                        {isLiked ? 'Me encanta' : 'Me encanta'}
+                                                    </span>
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
