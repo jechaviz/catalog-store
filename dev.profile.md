@@ -10,6 +10,7 @@
 ## 2) Non-Negotiable Engineering Constraints
 - Enforce SoC: orchestration, UI runtime, i18n, config, and integration logic must be separated.
 - Enforce SOLID, DRY, KISS in practical terms, not aspirationally.
+- Ensure best practices on AOP, OOP, Design Patterns, and Software Engineering.
 - Hard cap mindset: if a file exceeds 600 lines, split by responsibility.
 - Prefer config/catalog pattern over magic literals and coupled inline constants.
 - Prefer directory topology over flat naming when the domain grows: `app/{domain}/{component}.vue` is better than filename-prefix taxonomies.

@@ -9,7 +9,7 @@ import { setContext } from '@apollo/client/link/context';
 
 const httpLink = new HttpLink({
     // URL de tu instancia de Odoo + el endpoint del módulo GraphQL
-    uri: import.meta.env.VITE_ODOO_GRAPHQL_URL || 'https://tu-odoo.com/graphql/vsf',
+    uri: import.meta.env.VITE_ODOO_GRAPHQL_URL || 'https://MISSING_ODOO_GRAPHQL_URL.com/graphql/vsf',
 });
 
 const authLink = setContext((_, { headers }) => {
@@ -44,6 +44,6 @@ export const client = new ApolloClient({
  * Helper para generar URLs de imágenes de Odoo
  */
 export const getOdooImageUrl = (model: string, id: number, field: string = 'image_1920') => {
-    const baseUrl = import.meta.env.VITE_ODOO_BASE_URL || 'https://tu-odoo.com';
+    const baseUrl = import.meta.env.VITE_ODOO_BASE_URL || 'https://MISSING_ODOO_BASE_URL.com';
     return `${baseUrl}/web/image?model=${model}&id=${id}&field=${field}`;
 };

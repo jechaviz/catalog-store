@@ -1,9 +1,15 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { pb } from '@/lib/pb';
-import type { RecordModel } from 'pocketbase';
+
+interface User {
+    id: string;
+    email: string;
+    name?: string;
+    avatar?: string;
+    role?: 'admin' | 'user';
+}
 
 interface AuthContextType {
-    user: RecordModel | null;
+    user: User | null;
     isLoading: boolean;
     loginWithGoogle: () => Promise<void>;
     logout: () => void;
@@ -17,41 +23,31 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    const [user, setUser] = useState<RecordModel | null>(pb.authStore.record);
+    const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // Listen to changes in the auth store (login/logout events)
-        const unsubscribe = pb.authStore.onChange((token, model) => {
-            setUser(model);
-        });
+        // Mocking user session for demonstration and UI compatibility
+        // In a real scenario, this would check an Odoo session cookie or token
+        const mockUser: User = {
+            id: 'demo-user',
+            email: 'cliente@ejemplo.com',
+            name: 'Cliente Natura',
+            role: 'user'
+        };
 
-        // Check if current user is valid (optional, e.g. token refresh, but local check is usually fine)
-        if (pb.authStore.isValid && pb.authStore.record) {
-            setUser(pb.authStore.record);
-        } else {
-            setUser(null);
-        }
-
+        setUser(mockUser);
         setIsLoading(false);
-
-        return () => unsubscribe();
     }, []);
 
     const loginWithGoogle = async () => {
-        try {
-            // Initiates the OAuth2 login flow with Google. 
-            // Note: PocketBase must be configured with Google provider in its admin UI.
-            const authData = await pb.collection('users').authWithOAuth2({ provider: 'google' });
-            console.log('Logged in successfully', authData);
-        } catch (error) {
-            console.error('Google Auth Error:', error);
-            // Handle gracefully if user closes the modal or errors out
-        }
+        // TODO: Implement Odoo OAuth2 or social login
+        console.log('Login not implemented yet');
     };
 
     const logout = () => {
-        pb.authStore.clear();
+        setUser(null);
+        localStorage.removeItem('odoo_session');
     };
 
     return (
