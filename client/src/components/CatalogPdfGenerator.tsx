@@ -4,7 +4,7 @@ import html2canvas from 'html2canvas';
 import { Button } from '@/components/ui/button';
 import { Download, Loader2 } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/dataFetcher';
-import { getLighterShade } from '@/hooks/useColorExtraction';
+import { getLighterShade, getAnalogousColor } from '@/hooks/useColorExtraction';
 
 interface PdfGeneratorProps {
     products: CatalogProduct[];
@@ -12,52 +12,81 @@ interface PdfGeneratorProps {
 
 export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
     const [isGenerating, setIsGenerating] = useState(false);
+    const [progress, setProgress] = useState(0);
 
     const generatePdf = async () => {
         if (isGenerating) return;
         setIsGenerating(true);
+        setProgress(0);
 
         try {
-            // Group products by gender and subcategory
+            // Group products by gender to create a structured catalog
             const grouped = products.reduce((acc, product) => {
                 const gender = product.gender || 'unisex';
-                const subBrand = product.subBrand || 'General';
-                if (!acc[gender]) acc[gender] = {};
-                if (!acc[gender][subBrand]) acc[gender][subBrand] = [];
-                acc[gender][subBrand].push(product);
+                if (!acc[gender]) acc[gender] = [];
+                acc[gender].push(product);
                 return acc;
-            }, {} as Record<string, Record<string, CatalogProduct[]>>);
+            }, {} as Record<string, CatalogProduct[]>);
 
             const doc = new jsPDF('p', 'mm', 'a4');
             const pdfWidth = doc.internal.pageSize.getWidth();
             const pdfHeight = doc.internal.pageSize.getHeight();
             let isFirstPage = true;
 
-            // Helper to load image as base64 to avoid html2canvas CORS issues
+            // Helper to load image as base64 to avoid html2canvas issues
             const loadImageAsBase64 = async (url: string): Promise<string> => {
+                if (!url) return '';
                 try {
-                    const response = await fetch(url, { mode: 'cors' });
-                    if (!response.ok) throw new Error('Network response was not ok');
+                    // Ensure the URL is absolute for fetch
+                    const absoluteUrl = url.startsWith('http') ? url : window.location.origin + url;
+                    const response = await fetch(absoluteUrl);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     const blob = await response.blob();
-                    return new Promise((resolve) => {
+                    return new Promise((resolve, reject) => {
                         const reader = new FileReader();
                         reader.onloadend = () => resolve(reader.result as string);
+                        reader.onerror = reject;
                         reader.readAsDataURL(blob);
                     });
                 } catch (e) {
-                    console.warn("Failed to load image for PDF. CORS or Network error.", url);
-                    // Return empty string to indicate failure and render a fallback div instead
-                    return '';
+                    console.error("Failed to load image for PDF:", url, e);
+                    return ''; // Return empty string to allow PDF generation without that specific image
                 }
             };
 
-            // Render container to hold the hidden DOM elements we will capture
-            const container = document.createElement('div');
-            container.style.position = 'absolute';
-            container.style.top = '-9999px';
-            container.style.left = '-9999px';
-            container.style.width = '794px'; // A4 width at 96 DPI
-            document.body.appendChild(container);
+            // Create a hidden iframe for isolated rendering (avoids oklch/Tailwind conflicts)
+            const iframe = document.createElement('iframe');
+            iframe.id = 'pdf-render-frame';
+            iframe.style.position = 'fixed';
+            iframe.style.top = '0';
+            iframe.style.left = '0';
+            iframe.style.width = '794px';
+            iframe.style.height = '1122px';
+            iframe.style.visibility = 'hidden';
+            iframe.style.pointerEvents = 'none';
+            iframe.style.zIndex = '-9999';
+            document.body.appendChild(iframe);
+
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+            if (!iframeDoc) throw new Error("No se pudo acceder al documento del iframe.");
+
+            // Basic setup for the iframe document
+            iframeDoc.open();
+            iframeDoc.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <style>
+                        body { margin: 0; padding: 0; background-color: #FBFAF9; font-family: sans-serif; }
+                        * { box-sizing: border-box; -webkit-print-color-adjust: exact; }
+                        .page { width: 794px; height: 1122px; padding: 60px; position: relative; overflow: hidden; display: flex; flex-direction: column; background-color: #FBFAF9; }
+                    </style>
+                </head>
+                <body></body>
+                </html>
+            `);
+            iframeDoc.close();
 
             const genderLabels: Record<string, string> = {
                 female: 'Para Ella',
@@ -65,106 +94,129 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
                 unisex: 'Unisex',
             };
 
-            for (const [gender, subcategories] of Object.entries(grouped)) {
-                for (const [subBrand, categoryProducts] of Object.entries(subcategories)) {
-                    for (const product of categoryProducts) {
-                        if (!isFirstPage) {
-                            doc.addPage();
-                        }
-                        isFirstPage = false;
+            const totalProducts = products.length;
+            let processedCount = 0;
 
-                        // Create the HTML node for this product
-                        const pageNode = document.createElement('div');
-                        const primaryColor = 'var(--primary, #f97316)';
+            for (const [gender, categoryProducts] of Object.entries(grouped)) {
+                for (const product of categoryProducts) {
+                    if (!isFirstPage) {
+                        doc.addPage();
+                    }
+                    isFirstPage = false;
 
-                        // Load the image safely as base64
-                        const safeBase64Image = await loadImageAsBase64(product.imageUrl);
+                    processedCount++;
+                    setProgress(Math.round((processedCount / totalProducts) * 100));
 
-                        pageNode.innerHTML = `
-                            <div style="background-color: white; width: 794px; height: 1123px; padding: 40px; box-sizing: border-box; font-family: sans-serif; position: relative; overflow: hidden; display: flex; flex-direction: column;">
-                                {/* Header */}
-                                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid ${primaryColor}; padding-bottom: 20px; z-index: 10;">
-                                    <h1 style="margin: 0; color: ${primaryColor}; font-size: 32px; font-weight: 900; text-transform: uppercase;">Natura</h1>
-                                    <div style="text-align: right;">
-                                        <h2 style="margin: 0; font-size: 24px; color: #333;">${genderLabels[gender]}</h2>
-                                        <p style="margin: 5px 0 0; color: #666; font-size: 16px;">${subBrand}</p>
-                                    </div>
-                                </div>
+                    const primaryColor = '#F97316';
+                    const analogousColor1 = getAnalogousColor(primaryColor, 35);
+                    const analogousColor2 = getAnalogousColor(primaryColor, -35);
 
-                                {/* Main Content */}
-                                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; margin-top: 40px;">
-                                    
-                                    <div style="position: relative; width: 500px; height: 500px; margin-bottom: 40px; display: flex; align-items: center; justify-content: center;">
-                                        <div style="position: absolute; inset: 0; background-color: ${primaryColor}; opacity: 0.1; border-radius: 45%; filter: blur(20px);"></div>
-                                        ${safeBase64Image
-                                ? `<img src="${safeBase64Image}" alt="${product.name}" style="max-width: 80%; max-height: 80%; object-fit: contain; position: relative; z-index: 20; border-radius: 40px; box-shadow: 0 20px 40px rgba(0,0,0,0.1);" crossorigin="anonymous" />`
-                                : `<div style="position: relative; z-index: 20; width: 80%; height: 80%; background-color: white; border-radius: 40px; border: 4px dashed ${primaryColor}; display: flex; align-items: center; justify-content: center; flex-direction: column; color: ${primaryColor}; font-weight: bold; font-size: 24px;">
-                                                <span>📷</span>
-                                                <span style="font-size: 16px; margin-top: 10px;">Imagen no disponible</span>
-                                               </div>`
-                            }
-                                    </div>
+                    // Load image as base64
+                    const safeBase64Image = await loadImageAsBase64(product.imageUrl);
 
-                                    <h1 style="font-size: 48px; color: #111; font-weight: 800; text-align: center; margin: 0 0 10px 0;">${product.name}</h1>
-                                    <p style="font-size: 20px; color: #555; text-align: center; max-width: 80%; margin: 0 0 40px 0; line-height: 1.5;">${product.description}</p>
-                                    
-                                    <div style="display: flex; gap: 20px; justify-content: center; width: 100%;">
-                                        <div style="background-color: #f8fafc; padding: 20px 30px; border-radius: 20px; text-align: center; border: 1px solid #e2e8f0;">
-                                            <p style="margin: 0; color: #64748b; font-size: 14px; text-transform: uppercase; font-weight: bold;">Código de Producto</p>
-                                            <p style="margin: 10px 0 0; color: #0f172a; font-size: 24px; font-family: monospace; font-weight: bold;">${product.id.split('-')[0].toUpperCase()}</p>
-                                        </div>
-                                        
-                                        <div style="background-color: ${primaryColor}; padding: 20px 40px; border-radius: 20px; text-align: center; color: white;">
-                                            <p style="margin: 0; opacity: 0.9; font-size: 14px; text-transform: uppercase; font-weight: bold;">Precio Especial</p>
-                                            <p style="margin: 10px 0 0; font-size: 32px; font-weight: 900;">$${product.price.toFixed(2)}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div style="display: flex; gap: 20px; justify-content: center; width: 100%; margin-top: 20px;">
-                                        <div style="background-color: #f0fdf4; padding: 15px 30px; border-radius: 15px; text-align: center; border: 1px solid #bbf7d0;">
-                                            <p style="margin: 0; color: #166534; font-size: 14px; font-weight: bold;">✔️ Disponibilidad</p>
-                                            <p style="margin: 5px 0 0; color: #15803d; font-size: 18px; font-weight: 600;">En Stock</p>
-                                        </div>
-                                        <div style="background-color: #eff6ff; padding: 15px 30px; border-radius: 15px; text-align: center; border: 1px solid #bfdbfe;">
-                                            <p style="margin: 0; color: #1e40af; font-size: 14px; font-weight: bold;">🚚 Tiempo de Entrega</p>
-                                            <p style="margin: 5px 0 0; color: #1d4ed8; font-size: 18px; font-weight: 600;">24 - 48 hrs</p>
-                                        </div>
-                                    </div>
+                    // Create the HTML node for this product page
+                    const pageNode = iframeDoc.createElement('div');
+                    pageNode.className = 'page';
 
-                                </div>
-
-                                {/* Footer Background Elements */}
-                                <div style="position: absolute; bottom: -50px; left: -50px; width: 300px; height: 300px; background-color: ${primaryColor}; border-radius: 50%; opacity: 0.05; z-index: 1;"></div>
-                                <div style="position: absolute; top: 100px; right: -100px; width: 400px; height: 400px; background-color: ${primaryColor}; border-radius: 50%; opacity: 0.05; z-index: 1;"></div>
+                    pageNode.innerHTML = `
+                        <!-- Decorative background -->
+                        <div style="position: absolute; top: -100px; right: -100px; width: 400px; height: 400px; background-color: ${analogousColor1}; border-radius: 50%; opacity: 0.1;"></div>
+                        <div style="position: absolute; bottom: -150px; left: -150px; width: 500px; height: 500px; background-color: ${analogousColor2}; border-radius: 50%; opacity: 0.08;"></div>
+                        
+                        <!-- Header -->
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 50px; border-bottom: 2px solid ${primaryColor}40; padding-bottom: 20px; position: relative; z-index: 10; width: 100%;">
+                            <div style="flex: 1;">
+                                <h1 style="margin: 0; color: ${primaryColor}; font-size: 38px; font-weight: 900; letter-spacing: -1.5px;">natura</h1>
+                                <p style="margin: 5px 0 0; color: #666; font-size: 14px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">Catálogo Digital 2026</p>
                             </div>
-                        `;
+                            <div style="text-align: right;">
+                                <span style="display: inline-block; padding: 6px 16px; background-color: ${primaryColor}; color: white; border-radius: 100px; font-size: 14px; font-weight: 800; text-transform: uppercase;">
+                                    ${genderLabels[gender] || gender}
+                                </span>
+                            </div>
+                        </div>
 
-                        container.appendChild(pageNode);
+                        <!-- Main Content -->
+                        <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 10; gap: 40px; width: 100%;">
+                            
+                            <!-- Image Section -->
+                            <div style="position: relative; width: 450px; height: 450px; display: flex; align-items: center; justify-content: center;">
+                                <div style="position: absolute; inset: 0; background-color: ${primaryColor}15; border-radius: 50%;"></div>
+                                ${safeBase64Image
+                            ? `<img src="${safeBase64Image}" style="max-width: 90%; max-height: 90%; object-fit: contain; position: relative; z-index: 20; border-radius: 30px; box-shadow: 0 30px 60px rgba(0,0,0,0.1); border: 8px solid white;" />`
+                            : `<div style="width: 300px; height: 300px; background: white; border-radius: 30px; border: 4px dashed ${primaryColor}40; display: flex; align-items: center; justify-content: center; color: ${primaryColor}80; font-size: 40px;">📷</div>`
+                        }
+                            </div>
 
-                        // Use html2canvas to capture the node
-                        const canvas = await html2canvas(pageNode, {
-                            scale: 2, // higher resolution
-                            useCORS: true, // enable loading cross-origin images
+                            <!-- Info Section -->
+                            <div style="width: 100%; text-align: center;">
+                                <p style="margin: 0; color: ${primaryColor}; font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 4px; margin-bottom: 10px;">${product.brand} ${product.subBrand}</p>
+                                <h1 style="margin: 0; color: #111; font-size: 48px; font-weight: 900; line-height: 1.1; margin-bottom: 25px;">${product.name}</h1>
+                                <p style="margin: 0 auto; color: #444; font-size: 18px; line-height: 1.6; max-width: 85%; margin-bottom: 45px;">${product.description}</p>
+
+                                <!-- Specs Grid -->
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; width: 100%; margin-bottom: 20px;">
+                                    <div style="background: white; padding: 15px; border-radius: 15px; border: 1px solid #EEE;">
+                                        <p style="margin: 0; font-size: 10px; text-transform: uppercase; color: #888; font-weight: 700;">Código</p>
+                                        <p style="margin: 5px 0 0; font-size: 18px; font-weight: 800; color: #111;">${product.id.split('-')[0].toUpperCase()}</p>
+                                    </div>
+                                    <div style="background: white; padding: 15px; border-radius: 15px; border: 1px solid #EEE;">
+                                        <p style="margin: 0; font-size: 10px; text-transform: uppercase; color: #888; font-weight: 700;">Stock</p>
+                                        <p style="margin: 5px 0 0; font-size: 16px; font-weight: 800; color: ${product.inStock ? '#15803d' : '#991b1b'};">${product.inStock ? 'Disponible' : 'Agotado'}</p>
+                                    </div>
+                                    <div style="background: white; padding: 15px; border-radius: 15px; border: 1px solid #EEE;">
+                                        <p style="margin: 0; font-size: 10px; text-transform: uppercase; color: #888; font-weight: 700;">Entrega</p>
+                                        <p style="margin: 5px 0 0; font-size: 14px; font-weight: 800; color: #111;">${product.deliveryTime}</p>
+                                    </div>
+                                    <div style="background: ${primaryColor}; padding: 15px; border-radius: 15px; color: white;">
+                                        <p style="margin: 0; font-size: 10px; text-transform: uppercase; opacity: 0.9; font-weight: 700;">Precio</p>
+                                        <p style="margin: 5px 0 0; font-size: 24px; font-weight: 900;">$${product.price.toFixed(2)}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Footer -->
+                        <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 10; padding-top: 25px; border-top: 1px solid #EEE; width: 100%;">
+                            <div style="display: flex; gap: 8px;">
+                                ${product.benefits.slice(0, 2).map(b => `<span style="padding: 4px 12px; background: white; border-radius: 100px; font-size: 11px; color: #666; border: 1px solid #EEE;">${b.length > 30 ? b.substring(0, 27) + '...' : b}</span>`).join('')}
+                            </div>
+                            <p style="margin: 0; font-size: 11px; color: #AAA; font-weight: 500;">www.natura.com.mx • Página ${processedCount} de ${totalProducts}</p>
+                        </div>
+                    `;
+
+                    iframeDoc.body.innerHTML = ''; // Clear previous page
+                    iframeDoc.body.appendChild(pageNode);
+
+                    // Capture node from within the iframe
+                    try {
+                        const canvas = await html2canvas(iframeDoc.body, {
+                            scale: 1.5, // Slightly lower scale for stability
+                            useCORS: true,
+                            backgroundColor: '#FBFAF9',
                             logging: false,
+                            width: 794,
+                            height: 1122,
                         });
 
-                        const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                        const imgData = canvas.toDataURL('image/jpeg', 0.8);
                         doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-
-                        // Clean up node
-                        container.removeChild(pageNode);
+                    } catch (captureError) {
+                        console.error("html2canvas capture error:", captureError);
+                        throw new Error(`Error capturando página ${processedCount}: ${captureError}`);
                     }
                 }
             }
 
-            document.body.removeChild(container);
-            doc.save('Catálogo_Natura.pdf');
+            document.body.removeChild(iframe);
+            doc.save('Catalogo_Natura_Digital.pdf');
 
         } catch (error) {
-            console.error('Error generating PDF:', error);
-            alert('Hubo un error al generar el PDF. Verifica que las imágenes sean accesibles.');
+            console.error('Error final generating PDF:', error);
+            alert(`Error al generar el PDF: ${error instanceof Error ? error.message : String(error)}. Este problema suele ocurrir por incompatibilidad de colores con Tailwind v4. Se ha implementado un aislamiento para corregirlo.`);
         } finally {
             setIsGenerating(false);
+            setProgress(0);
         }
     };
 
@@ -173,17 +225,19 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
             onClick={generatePdf}
             disabled={isGenerating || products.length === 0}
             variant="outline"
-            className="flex items-center gap-2 border-primary/20 hover:bg-primary hover:text-white transition-all pointer-events-auto"
+            className="flex items-center gap-2 border-primary/20 hover:border-primary hover:bg-primary/5 text-primary transition-all pointer-events-auto sm:min-w-[180px]"
+            title="Descargar Catálogo PDF"
         >
             {isGenerating ? (
                 <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Generando...
+                    <span className="hidden sm:inline">Generando... {progress}%</span>
+                    <span className="sm:hidden">{progress}%</span>
                 </>
             ) : (
                 <>
                     <Download className="w-4 h-4" />
-                    Descargar Catálogo PDF
+                    <span className="hidden sm:inline">Descargar PDF</span>
                 </>
             )}
         </Button>
