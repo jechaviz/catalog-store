@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
 import { fetchCatalogData, type CatalogData, type CatalogProduct } from '@/lib/dataFetcher';
-import { Navbar } from '@/components/Navbar';
-import { ProductCard } from '@/components/ProductCard';
-import { ProductDetail } from '@/components/ProductDetail';
-import { CartDrawer } from '@/components/CartDrawer';
-import { ThemeSelector } from '@/components/ThemeSelector';
-import { CatalogPdfGenerator } from '@/components/CatalogPdfGenerator';
-import { Footer } from '../components/Footer';
+import { Navbar } from '@/components/app/layout/Navbar';
+import { ProductCard } from '@/components/domain/product/ProductCard';
+import { ProductDetail } from '@/components/domain/product/ProductDetail';
+import { CartDrawer } from '@/components/domain/cart/CartDrawer';
+import { ThemeSelector } from '@/components/shared/ui/ThemeSelector';
+import { CatalogPdfGenerator } from '@/components/domain/catalog/CatalogPdfGenerator';
+import { Footer } from '@/components/app/layout/Footer';
 import { useCart } from '@/hooks/useCart';
 import { useTheme } from '@/hooks/useTheme';
 import { Loader2 } from 'lucide-react';
-import { ContactFormModal } from '@/components/ContactFormModal';
+import { ContactFormModal } from '@/components/shared/ui/ContactFormModal';
 import { useLocation } from 'wouter';
 
 export default function Home() {
@@ -56,7 +56,7 @@ export default function Home() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background/50 p-6 text-center">
         <h2 className="heading text-3xl font-bold text-red-500 mb-4">¡Ups! Algo salió mal</h2>
-        <p className="body text-muted-foreground max-w-md">No pudimos cargar la información del catálogo. Por favor, asegúrate de que el archivo products.yml exista en la carpeta public.</p>
+        <p className="body text-muted-foreground max-w-md">No pudimos conectar con el servidor de Odoo y los datos de respaldo no están disponibles. Por favor, revisa la configuración en tu archivo .env.</p>
       </div>
     );
   }

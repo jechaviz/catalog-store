@@ -1,18 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useCart } from '@/hooks/useCart';
 import { useLocation } from 'wouter';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/shared/ui/button';
+import { Input } from '@/components/shared/ui/input';
+import { Textarea } from '@/components/shared/ui/textarea';
 import { MessageCircle, CreditCard, ArrowLeft, Banknote, Building2, Loader2 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
 import { client as odooClient } from '@/lib/odoo';
 import { CREATE_ORDER } from '@/lib/odooQueries';
-import { useEffect } from 'react';
-
-const SELLER_PHONE = "5215573456073"; // Update with actual seller number
-const CLABE_ACCOUNT = "012345678901234567 (Bancomer)"; // Change to actual CLABE
+import { CONFIG, t } from '@/config';
 
 type PaymentMethod = 'whatsapp_cash' | 'transfer' | 'connectia' | 'paypal';
 
@@ -41,7 +38,7 @@ export default function Checkout() {
         return null;
     }
 
-    const shippingCost = subtotal > 1500 ? 0 : 99; // Free shipping over $1500
+    const shippingCost = subtotal > CONFIG.SHIPPING.FREE_THRESHOLD ? 0 : CONFIG.SHIPPING.DEFAULT_COST;
     const total = subtotal + shippingCost;
 
     const generateOrderDetails = () => {
@@ -94,12 +91,12 @@ export default function Checkout() {
 
             if (paymentMethod === 'whatsapp_cash') {
                 finalMessage = `${baseOrder}*Método de Pago:* Pago contra entrega (Efectivo/Terminal). \n\nOrden Odoo: ${orderName}\nPor favor confirmar recepción del pedido.`;
-                window.open(`https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
+                window.open(`${CONFIG.SELLER.WHATSAPP_BASE_URL}${CONFIG.SELLER.PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
             }
             else if (paymentMethod === 'transfer') {
-                alert(`Por favor, transfiere la cantidad de $${total.toFixed(2)} a la CLABE:\n${CLABE_ACCOUNT}\n\nPresiona OK para abrir WhatsApp y enviar tu comprobante.`);
+                alert(`Por favor, transfiere la cantidad de $${total.toFixed(2)} a la CLABE:\n${CONFIG.SELLER.CLABE}\n\nPresiona OK para abrir WhatsApp y enviar tu comprobante.`);
                 finalMessage = `${baseOrder}*Método de Pago:* Transferencia Bancaria. \n\nOrden Odoo: ${orderName}\nAdjunto mi comprobante de pago para proceder con el envío.`;
-                window.open(`https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
+                window.open(`${CONFIG.SELLER.WHATSAPP_BASE_URL}${CONFIG.SELLER.PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
             }
             else if (paymentMethod === 'connectia') {
                 const directLink = items.find(i => i.product.paymentLink)?.product.paymentLink || "https://connectia.mx/tu-tienda";
@@ -119,7 +116,7 @@ export default function Checkout() {
 
             const baseOrder = generateOrderDetails();
             const finalMessage = `${baseOrder}*Aviso:* El pedido no se pudo guardar en el sistema digital automáticamente. Por favor confirmar manualmente.`;
-            window.open(`https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
+            window.open(`${CONFIG.SELLER.WHATSAPP_BASE_URL}${CONFIG.SELLER.PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
 
             clearCart();
             setLocation('/');

@@ -1,18 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
-import { Button } from '@/components/ui/button';
-import { ArrowLeft, Clock, Package, RefreshCw, LogOut, Zap } from 'lucide-react';
-import { pb } from '@/lib/pb';
+import { Button } from '@/components/shared/ui/button';
+import { ArrowLeft, Clock, Package, LogOut, Zap } from 'lucide-react';
 import { useCart } from '@/hooks/useCart';
-import type { RecordModel } from 'pocketbase';
 
 export default function Profile() {
     const { user, isLoading, logout } = useAuth();
     const [, setLocation] = useLocation();
     const { addItem, setIsDrawerOpen } = useCart();
-    const [orders, setOrders] = useState<RecordModel[]>([]);
-    const [loadingOrders, setLoadingOrders] = useState(true);
+    const [orders, setOrders] = useState<any[]>([]);
+    const [loadingOrders, setLoadingOrders] = useState(false);
 
     // Flash deal dummy data for UI demonstration
     const [timeLeft, setTimeLeft] = useState<{ hours: number, minutes: number, seconds: number }>({
@@ -46,25 +44,8 @@ export default function Profile() {
     }, [user, isLoading, setLocation]);
 
     useEffect(() => {
-        async function loadOrders() {
-            if (user) {
-                try {
-                    // Attempt to fetch orders from PocketBase if collection exists
-                    // Since schema might not be ready, we wrap in try-catch
-                    const result = await pb.collection('orders').getFullList({
-                        filter: `user_id = "${user.id}"`,
-                        sort: '-created',
-                        expand: 'order_items.product_id'
-                    });
-                    setOrders(result);
-                } catch (e) {
-                    console.log('Orders not loaded or collection missing:', e);
-                } finally {
-                    setLoadingOrders(false);
-                }
-            }
-        }
-        loadOrders();
+        // TODO: Load orders from Odoo
+        setLoadingOrders(false);
     }, [user]);
 
     if (isLoading || !user) {
@@ -76,15 +57,9 @@ export default function Profile() {
         setLocation('/');
     };
 
-    const handleReorder = (order: RecordModel) => {
-        // Assuming `order.expand.order_items` exists and contains products
-        // For now, since schema is new, this is a placeholder alerting the user.
-        if (order.expand?.order_items) {
-            // Logic to map order items to cart
-            // order.expand.order_items.forEach(item => addItem(item.expand.product_id, item.quantity));
-            // setIsDrawerOpen(true);
-        }
-        alert("Funcionalidad de Re-ordenar (Pendiente esquema final de DB)");
+    const handleReorder = (order: any) => {
+        // TODO: Implement reorder logic with Odoo
+        alert("Funcionalidad de Re-ordenar (Pendiente integración con Odoo)");
     };
 
     return (
@@ -114,7 +89,7 @@ export default function Profile() {
                 <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-primary/10 flex flex-col sm:flex-row items-center gap-6 mb-8">
                     <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary/20 shrink-0">
                         {user.avatar ? (
-                            <img src={pb.files.getUrl(user, user.avatar)} alt="Avatar" className="w-full h-full object-cover" />
+                            <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full bg-secondary/20 flex items-center justify-center text-primary font-bold text-3xl heading">
                                 {user.name?.charAt(0) || user.email?.charAt(0) || '?'}
@@ -190,13 +165,13 @@ export default function Profile() {
                                     </div>
                                     <div className="flex flex-col items-start sm:items-end justify-between">
                                         <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase tracking-widest ${order.status === 'delivered' ? 'bg-green-100 text-green-700' :
-                                                order.status === 'shipped' ? 'bg-blue-100 text-blue-700' :
-                                                    'bg-orange-100 text-orange-700'
+                                            order.status === 'shipped' ? 'bg-blue-100 text-blue-700' :
+                                                'bg-orange-100 text-orange-700'
                                             }`}>
                                             {order.status || 'Procesando'}
                                         </span>
                                         <Button variant="outline" size="sm" className="mt-4 rounded-full group-hover:bg-primary group-hover:text-white transition-colors" onClick={() => handleReorder(order)}>
-                                            <RefreshCw className="w-4 h-4 mr-2" /> Volver a pedir
+                                            Volver a pedir
                                         </Button>
                                     </div>
                                 </div>
