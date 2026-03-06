@@ -6,7 +6,7 @@ import { ProductDetail } from '@/components/ProductDetail';
 import { CartDrawer } from '@/components/CartDrawer';
 import { ThemeSelector } from '@/components/ThemeSelector';
 import { CatalogPdfGenerator } from '@/components/CatalogPdfGenerator';
-import { Footer } from '@/components/Footer';
+import { Footer } from '../components/Footer';
 import { useCart } from '@/hooks/useCart';
 import { useTheme } from '@/hooks/useTheme';
 import { Loader2 } from 'lucide-react';
@@ -87,6 +87,7 @@ export default function Home() {
         onSearchChange={setSearchQuery}
         cartItemCount={cart.itemCount}
         onCartClick={() => cart.setIsDrawerOpen(true)}
+        products={data.products}
       />
 
       <main className="container mx-auto px-4 py-8 md:py-12 relative min-h-[80vh]">

@@ -2,7 +2,8 @@ import { Search, Heart, ShoppingBag, User } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
-import type { Category } from '@/lib/dataFetcher';
+import { CatalogPdfGenerator } from '@/components/CatalogPdfGenerator';
+import type { Category, CatalogProduct } from '@/lib/dataFetcher';
 
 interface NavbarProps {
     categories: Category[];
@@ -11,9 +12,10 @@ interface NavbarProps {
     onSearchChange: (query: string) => void;
     cartItemCount: number;
     onCartClick: () => void;
+    products: CatalogProduct[];
 }
 
-export function Navbar({ categories, activeCategory, onCategorySelect, onSearchChange, cartItemCount, onCartClick }: NavbarProps) {
+export function Navbar({ categories, activeCategory, onCategorySelect, onSearchChange, cartItemCount, onCartClick, products }: NavbarProps) {
     const { user, loginWithGoogle } = useAuth();
     const [, setLocation] = useLocation();
 
@@ -39,6 +41,7 @@ export function Navbar({ categories, activeCategory, onCategorySelect, onSearchC
 
                 {/* Action Icons */}
                 <div className="flex items-center gap-3 md:gap-4 shrink-0">
+                    <CatalogPdfGenerator products={products} />
                     <button className="md:hidden p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-secondary/10 transition-colors">
                         <Search className="w-5 h-5" />
                     </button>
