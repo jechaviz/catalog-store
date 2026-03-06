@@ -1,4 +1,5 @@
-import yaml from 'js-yaml';
+import { client as odooClient, getOdooImageUrl } from './odoo';
+import { GET_PRODUCTS, GET_CATEGORIES } from './odooQueries';
 
 export interface Category {
     id: string;
@@ -29,15 +30,44 @@ export interface CatalogData {
 
 export async function fetchCatalogData(): Promise<CatalogData | null> {
     try {
-        const response = await fetch('/products.yml');
-        if (!response.ok) {
-            throw new Error(`Failed to load YAML: ${response.statusText}`);
-        }
-        const yamlText = await response.text();
-        const parsedData = yaml.load(yamlText) as CatalogData;
-        return parsedData;
+        // Fetch products and categories in parallel
+        const [productsRes, categoriesRes] = await Promise.all([
+            odooClient.query({ query: GET_PRODUCTS, variables: { pageSize: 100 } }),
+            odooClient.query({ query: GET_CATEGORIES })
+        ]);
+
+        const odooProducts = (productsRes.data as any)?.products?.products || [];
+        const odooCategories = (categoriesRes.data as any)?.categories?.categories || [];
+
+        // Map Odoo data to our local interfaces
+        const products: CatalogProduct[] = odooProducts.map((p: any) => ({
+            id: p.id.toString(),
+            name: p.name,
+            brand: "Natura", // Default for this shop
+            subBrand: p.sku || "",
+            categoryId: p.categories?.[0]?.id?.toString() || "uncategorized",
+            gender: "unisex", // Odoo might need a custom field for this
+            description: p.description || "",
+            benefits: [], // Odoo might need a custom field for this
+            price: p.price?.regular || 0,
+            imageUrl: p.image || getOdooImageUrl('product.template', p.id),
+            inStock: p.isInStock ?? true,
+            deliveryTime: "Entrega Inmediata",
+            deliveryMethods: ["Envío por paquetería"]
+        }));
+
+        const categories: Category[] = odooCategories.map((c: any) => ({
+            id: c.id.toString(),
+            name: c.name
+        }));
+
+        return {
+            categories,
+            products
+        };
     } catch (error) {
-        console.error("Error parsing YAML catalog data", error);
+        console.error("Error fetching Odoo catalog data", error);
+        // Fallback or return null to allow the app to handle empty state
         return null;
     }
 }

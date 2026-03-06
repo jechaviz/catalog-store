@@ -4,8 +4,12 @@ import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageCircle, CreditCard, ArrowLeft, Banknote, Building2 } from 'lucide-react';
+import { MessageCircle, CreditCard, ArrowLeft, Banknote, Building2, Loader2 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/contexts/AuthContext';
+import { client as odooClient } from '@/lib/odoo';
+import { CREATE_ORDER } from '@/lib/odooQueries';
+import { useEffect } from 'react';
 
 const SELLER_PHONE = "5215573456073"; // Update with actual seller number
 const CLABE_ACCOUNT = "012345678901234567 (Bancomer)"; // Change to actual CLABE
@@ -16,11 +20,20 @@ export default function Checkout() {
     const { items, subtotal, clearCart } = useCart();
     const [, setLocation] = useLocation();
     const { theme } = useTheme();
+    const { user } = useAuth();
 
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('whatsapp_cash');
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    // Pre-fill data if user is logged in
+    useEffect(() => {
+        if (user) {
+            setCustomerName(user.name || '');
+        }
+    }, [user]);
 
     // If cart is empty, redirect back
     if (items.length === 0) {
@@ -46,40 +59,72 @@ export default function Checkout() {
         return orderText;
     };
 
-    const handleCheckout = () => {
+    const handleCheckout = async () => {
         if (!customerName || !customerPhone || !customerAddress) {
             alert('Por favor, completa todos tus datos de envío.');
             return;
         }
 
-        const baseOrder = generateOrderDetails();
-        let finalMessage = '';
+        setIsProcessing(true);
 
-        if (paymentMethod === 'whatsapp_cash') {
-            finalMessage = `${baseOrder}*Método de Pago:* Pago contra entrega (Efectivo/Terminal). \n\nPor favor confirmar recepción del pedido.`;
+        try {
+            // 1. Create Order in Odoo using GraphQL
+            const itemsInput = items.map(item => ({
+                product_id: parseInt(item.product.id),
+                quantity: item.quantity,
+                price_unit: item.product.price
+            }));
+
+            const response = await odooClient.mutate({
+                mutation: CREATE_ORDER,
+                variables: {
+                    customerName,
+                    customerPhone,
+                    customerAddress,
+                    items: itemsInput
+                }
+            });
+
+            const odooOrder = (response.data as any)?.createOrder?.order;
+            const orderId = odooOrder?.id || 'OD-NEW';
+            const orderName = odooOrder?.name || 'Nuevo Pedido';
+
+            const baseOrder = generateOrderDetails();
+            let finalMessage = '';
+
+            if (paymentMethod === 'whatsapp_cash') {
+                finalMessage = `${baseOrder}*Método de Pago:* Pago contra entrega (Efectivo/Terminal). \n\nOrden Odoo: ${orderName}\nPor favor confirmar recepción del pedido.`;
+                window.open(`https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
+            }
+            else if (paymentMethod === 'transfer') {
+                alert(`Por favor, transfiere la cantidad de $${total.toFixed(2)} a la CLABE:\n${CLABE_ACCOUNT}\n\nPresiona OK para abrir WhatsApp y enviar tu comprobante.`);
+                finalMessage = `${baseOrder}*Método de Pago:* Transferencia Bancaria. \n\nOrden Odoo: ${orderName}\nAdjunto mi comprobante de pago para proceder con el envío.`;
+                window.open(`https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
+            }
+            else if (paymentMethod === 'connectia') {
+                const directLink = items.find(i => i.product.paymentLink)?.product.paymentLink || "https://connectia.mx/tu-tienda";
+                window.open(directLink, '_blank');
+            }
+            else if (paymentMethod === 'paypal') {
+                window.open(`https://paypal.me/tuusuario/${total}`, '_blank');
+            }
+
+            clearCart();
+            setLocation(user ? '/profile' : '/');
+
+        } catch (error) {
+            console.error('Error saving order to Odoo:', error);
+            // Fallback: Proceed with WhatsApp even if DB save fails, but notify
+            alert('Hubo un problema al conectar con el servidor de Odoo, pero procederemos vía WhatsApp.');
+
+            const baseOrder = generateOrderDetails();
+            const finalMessage = `${baseOrder}*Aviso:* El pedido no se pudo guardar en el sistema digital automáticamente. Por favor confirmar manualmente.`;
             window.open(`https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
+
             clearCart();
             setLocation('/');
-        }
-        else if (paymentMethod === 'transfer') {
-            alert(`Por favor, transfiere la cantidad de $${total.toFixed(2)} a la CLABE:\n${CLABE_ACCOUNT}\n\nPresiona OK para abrir WhatsApp y enviar tu comprobante.`);
-            finalMessage = `${baseOrder}*Método de Pago:* Transferencia Bancaria. \n\nAdjunto mi comprobante de pago para proceder con el envío.`;
-            window.open(`https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
-            clearCart();
-            setLocation('/');
-        }
-        else if (paymentMethod === 'connectia') {
-            // Find if any product has a specific payment link (mocking connectia redirect)
-            const directLink = items.find(i => i.product.paymentLink)?.product.paymentLink || "https://connectia.mx/tu-tienda";
-            window.open(directLink, '_blank');
-            clearCart();
-            setLocation('/');
-        }
-        else if (paymentMethod === 'paypal') {
-            // Simple PayPal.Me generic redirect
-            window.open(`https://paypal.me/tuusuario/${total}`, '_blank');
-            clearCart();
-            setLocation('/');
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -245,9 +290,17 @@ export default function Checkout() {
 
                             <Button
                                 onClick={handleCheckout}
+                                disabled={isProcessing}
                                 className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/90 text-white shadow-xl hover:shadow-primary/30 transition-all font-bold heading text-lg"
                             >
-                                Confirmar Pedido
+                                {isProcessing ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                                        Procesando...
+                                    </>
+                                ) : (
+                                    'Confirmar Pedido'
+                                )}
                             </Button>
                             <p className="text-center text-xs text-muted-foreground mt-4">
                                 Al confirmar, estás aceptando que el inventario está sujeto a disponibilidad por parte del consultor.
