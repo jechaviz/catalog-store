@@ -35,7 +35,7 @@ export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: 
     };
 
     return (
-        <Card className="group relative overflow-hidden bg-white/80 backdrop-blur-sm border-transparent hover:border-primary/20 shadow-sm hover:shadow-xl transition-all duration-500 rounded-[2rem] flex flex-col h-full">
+        <Card className="group relative overflow-hidden bg-white/80 backdrop-blur-sm border-transparent hover:border-primary/20 shadow-sm hover:shadow-2xl transition-all duration-500 rounded-[2rem] flex flex-col h-full">
             {/* Decorative blurred background blob */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full filter blur-2xl transform translate-x-10 -translate-y-10 group-hover:bg-primary/10 transition-colors duration-500"></div>
 
@@ -64,7 +64,7 @@ export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: 
                     className="absolute inset-0 bg-primary/20 backdrop-blur-[2px] opacity-0 group-hover/image:opacity-100 transition-opacity duration-300 z-10 flex items-center justify-center cursor-pointer rounded-[2rem]"
                     onClick={() => onViewDetail(product)}
                 >
-                    <div className="w-14 h-14 bg-white text-primary rounded-full shadow-2xl flex items-center justify-center transform scale-50 group-hover/image:scale-100 transition-transform duration-300 hover:bg-primary hover:text-white">
+                    <div className="w-14 h-14 bg-white text-primary rounded-full shadow-2xl flex items-center justify-center transform scale-50 group-hover/image:scale-100 transition-all duration-300 hover:bg-primary hover:text-white hover:scale-110">
                         <Eye className="w-6 h-6" />
                     </div>
                 </div>
@@ -121,7 +121,7 @@ export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: 
                                 btn.classList.add('animate-bounce');
                                 setTimeout(() => btn.classList.remove('animate-bounce'), 800);
                             }}
-                            className="rounded-full w-12 h-12 p-0 bg-primary hover:bg-primary/90 text-white shadow-lg hover:shadow-primary/25 transition-all group/buy shrink-0 flex items-center justify-center"
+                            className="rounded-full w-12 h-12 p-0 bg-primary hover:bg-primary/80 active:scale-95 text-white shadow-lg hover:shadow-primary/40 transition-all group/buy shrink-0 flex items-center justify-center"
                             title="Añadir al Carrito"
                         >
                             <ShoppingCart className="w-5 h-5 group-hover/buy:-rotate-12 transition-transform" />
