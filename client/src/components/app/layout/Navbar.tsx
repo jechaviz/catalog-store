@@ -42,11 +42,11 @@ export function Navbar({ categories, activeCategory, onCategorySelect, onSearchC
                 {/* Action Icons */}
                 <div className="flex items-center gap-3 md:gap-4 shrink-0">
                     <CatalogPdfGenerator products={products} />
-                    <button className="md:hidden p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-secondary/10 transition-colors">
+                    <button className="md:hidden p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-primary/10 transition-colors">
                         <Search className="w-5 h-5" />
                     </button>
                     {user ? (
-                        <button onClick={() => setLocation('/profile')} className="p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-secondary/10 transition-colors relative" title="Mi Perfil">
+                        <button onClick={() => setLocation('/profile')} className="p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-primary/10 transition-colors relative" title="Mi Perfil">
                             <div className="w-6 h-6 rounded-full overflow-hidden border border-primary/30">
                                 {user.avatar ? (
                                     <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
@@ -56,7 +56,7 @@ export function Navbar({ categories, activeCategory, onCategorySelect, onSearchC
                             </div>
                         </button>
                     ) : (
-                        <button onClick={loginWithGoogle} className="p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-secondary/10 transition-colors relative" title="Iniciar Sesión">
+                        <button onClick={loginWithGoogle} className="p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-primary/10 transition-colors relative" title="Iniciar Sesión">
                             <User className="w-5 h-5" />
                         </button>
                     )}
