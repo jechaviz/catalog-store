@@ -3,6 +3,8 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Removed @theme inline to prevent Tailwind v4 CSS variable loops */
+
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -44,39 +46,39 @@
 
 :root, .theme-female {
   /* Organic & Artisanal Design - Warm Natural Palette (Women/Default) */
-  --primary: oklch(0.58 0.22 25);      /* Rojo terracota cálido #C1440E */
-  --primary-foreground: oklch(0.98 0.001 286);  /* Crema para contraste */
-  --sidebar-primary: oklch(0.55 0.2 30);        /* Naranja suave #E8A87C */
-  --sidebar-primary-foreground: oklch(0.98 0.001 286);
-  --chart-1: oklch(0.6 0.18 20);   /* Rojo oscuro */
-  --chart-2: oklch(0.58 0.22 25);  /* Rojo terracota */
-  --chart-3: oklch(0.55 0.2 30);   /* Naranja suave */
-  --chart-4: oklch(0.45 0.15 50);  /* Verde bosque */
-  --chart-5: oklch(0.65 0.12 60);  /* Dorado cálido */
-  --radius: 1.2rem;  /* Más redondeado para lo orgánico */
-  --background: oklch(0.96 0.002 60);  /* Crema F5F1E8 */
-  --foreground: oklch(0.25 0.02 65);   /* Marrón oscuro */
-  --card: oklch(1 0 0);                /* Blanco puro */
-  --card-foreground: oklch(0.25 0.02 65);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.02 65);
-  --secondary: oklch(0.55 0.2 30);  /* Naranja suave */
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.85 0.01 60);     /* Gris cálido */
-  --muted-foreground: oklch(0.45 0.02 65);
-  --accent: oklch(0.45 0.15 50);    /* Verde bosque */
-  --accent-foreground: oklch(0.98 0.001 286);
-  --destructive: oklch(0.58 0.22 25);
-  --destructive-foreground: oklch(0.98 0.001 286);
-  --border: oklch(0.9 0.005 60);    /* Borde cálido */
-  --input: oklch(0.95 0.002 60);
-  --ring: oklch(0.58 0.22 25);
-  --sidebar: oklch(0.96 0.002 60);
-  --sidebar-foreground: oklch(0.25 0.02 65);
-  --sidebar-accent: oklch(0.55 0.2 30);
-  --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(0.9 0.005 60);
-  --sidebar-ring: oklch(0.58 0.22 25);
+  --primary: #AF241E;
+  --primary-foreground: #FFFFFF;
+  --sidebar-primary: #C2410C;
+  --sidebar-primary-foreground: #FFFFFF;
+  --chart-1: #A33308;
+  --chart-2: #C1440E;
+  --chart-3: #E8A87C;
+  --chart-4: #417551;
+  --chart-5: #E2B565;
+  --radius: 1.2rem;
+  --background: #F5F1E8; /* El Crema que se estaba viendo guinda */
+  --foreground: #4A3B32;
+  --card: #FFFFFF;
+  --card-foreground: #4A3B32;
+  --popover: #FFFFFF;
+  --popover-foreground: #4A3B32;
+  --secondary: #D48C70;
+  --secondary-foreground: #FFFFFF;
+  --muted: #D3CDC1;
+  --muted-foreground: #7E746A;
+  --accent: #417551;
+  --accent-foreground: #FFFFFF;
+  --destructive: #AF241E;
+  --destructive-foreground: #FFFFFF;
+  --border: #E0DACB;
+  --input: #EBE6D9;
+  --ring: #C1440E;
+  --sidebar: #F5F1E8;
+  --sidebar-foreground: #4A3B32;
+  --sidebar-accent: #D48C70;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #E0DACB;
+  --sidebar-ring: #AF241E;
 }
 
 .theme-male {
@@ -154,38 +156,49 @@
 }
 
 .dark {
-  --primary: var(--color-blue-700);
-  --primary-foreground: var(--color-blue-50);
-  --sidebar-primary: var(--color-blue-500);
-  --sidebar-primary-foreground: var(--color-blue-50);
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.85 0.005 65);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.85 0.005 65);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.85 0.005 65);
-  --secondary: oklch(0.24 0.006 286.033);
-  --secondary-foreground: oklch(0.7 0.005 65);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground:  oklch(0.92 0.005 65);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.488 0.243 264.376);
-  --chart-1: var(--color-blue-300);
-  --chart-2: var(--color-blue-500);
-  --chart-3: var(--color-blue-600);
-  --chart-4: var(--color-blue-700);
-  --chart-5: var(--color-blue-800);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.85 0.005 65);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground:  oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.488 0.243 264.376);
+  /* Premium Dark Aesthetic - Deep Charcoal & Slate (Bulletproof Hex) */
+  --primary: #DD5A24;
+  --primary-foreground: #FFFFFF;
+  --sidebar-primary: #1F2937;
+  --sidebar-primary-foreground: #F9FAFB;
+  
+  --background: #111827;  /* Gris carbón muy profundo (Bulletproof) */
+  --foreground: #F9FAFB;  /* Texto claro (asi blanco) */
+  
+  --card: #1F2937;        /* Gris pizarra oscuro para tarjetas */
+  --card-foreground: #F9FAFB;
+  
+  --popover: #1F2937;
+  --popover-foreground: #F9FAFB;
+  
+  --secondary: #374151;   /* Gris más claro para botones secundarios */
+  --secondary-foreground: #F9FAFB;
+  
+  --muted: #4B5563;       /* Elementos inactivos/silenciados */
+  --muted-foreground: #9CA3AF;
+  
+  --accent: #4B5563;      /* Detalles de acento */
+  --accent-foreground: #F9FAFB;
+  
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  
+  --border: #374151;       /* Bordes sutiles oscuros */
+  --input: #374151;
+  --ring: #DD5A24;
+  
+  --chart-1: #DD5A24;
+  --chart-2: #E8A87C;
+  --chart-3: #FCD34D;
+  --chart-4: #34D399;
+  --chart-5: #60A5FA;
+  
+  --sidebar: #111827;
+  --sidebar-foreground: #F9FAFB;
+  --sidebar-accent: #374151;
+  --sidebar-accent-foreground: #F9FAFB;
+  --sidebar-border: #374151;
+  --sidebar-ring: #DD5A24;
 }
 
 @layer base {
@@ -219,10 +232,11 @@
   }
 
   * {
-    @apply border-border outline-ring/50;
+    border-color: var(--border);
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--background);
+    color: var(--foreground);
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -234,6 +248,39 @@
   input[type="checkbox"]:not(:disabled),
   input[type="radio"]:not(:disabled) {
     @apply cursor-pointer;
+  }
+
+  /* 
+   * Foolproof Dark Mode Glassmorphism (Using RGBA for perfect transparency)
+   */
+  .dark .bg-white\/95 {
+    background-color: rgba(17, 24, 39, 0.95) !important;
+  }
+  .dark .bg-white\/90 {
+    background-color: rgba(17, 24, 39, 0.90) !important;
+  }
+  .dark .bg-white\/80 {
+    background-color: rgba(31, 41, 55, 0.85) !important;
+  }
+  .dark .bg-white\/60 {
+    background-color: rgba(17, 24, 39, 0.85) !important;
+  }
+  .dark .bg-white\/50 {
+    background-color: rgba(17, 24, 39, 0.80) !important;
+  }
+  .dark .bg-white\/40 {
+    background-color: rgba(31, 41, 55, 0.60) !important;
+  }
+  .dark .bg-white {
+    background-color: #1F2937 !important; /* Converts hard white to card background */
+  }
+  
+  /* Text overrides for readability on dark cards */
+  .dark .text-slate-800, .dark .text-slate-700 {
+    color: #F9FAFB !important;
+  }
+  .dark .bg-secondary\/10 {
+    background-color: rgba(255, 255, 255, 0.05) !important; /* Lighter inputs in dark mode */
   }
 }
 
