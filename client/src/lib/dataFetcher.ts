@@ -29,6 +29,16 @@ export interface CatalogData {
     products: CatalogProduct[];
 }
 
+interface LocalCategoryOverrides {
+    categories: Category[];
+    deletedCategoryIds: string[];
+}
+
+const LOCAL_CATEGORY_STORAGE_KEYS = [
+    'catalog_local_categories',
+    'catalog_local_category_overrides',
+] as const;
+
 const NATURA_MOCK_DATA: CatalogData = {
     categories: [
         { id: '1', name: 'Perfumeria' },
@@ -203,23 +213,239 @@ function getFallbackData(brand: 'natura' | 'nikken') {
     return cloneCatalogData(brand === 'nikken' ? NIKKEN_MOCK_DATA : NATURA_MOCK_DATA);
 }
 
-function applyBrandLocalOverrides(data: CatalogData, brand: 'natura' | 'nikken'): CatalogData {
-    if (typeof window === 'undefined') {
-        return data;
+function canUseBrowserStorage() {
+    return typeof window !== 'undefined' && typeof localStorage !== 'undefined';
+}
+
+function safeParseJson<T>(rawValue: string | null, fallbackValue: T): T {
+    if (!rawValue) {
+        return fallbackValue;
     }
 
     try {
+        return JSON.parse(rawValue) as T;
+    } catch {
+        return fallbackValue;
+    }
+}
+
+function normalizeCategoryText(value: unknown) {
+    return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
+}
+
+function normalizeCategoryRecord(value: unknown): Category | null {
+    if (!value || typeof value !== 'object') {
+        return null;
+    }
+
+    const candidate = value as Partial<Category>;
+    const id = normalizeCategoryText(candidate.id);
+    const name = normalizeCategoryText(candidate.name);
+
+    if (!id || !name) {
+        return null;
+    }
+
+    return { id, name };
+}
+
+function normalizeDeletedCategoryIds(value: unknown) {
+    const rawValues = Array.isArray(value)
+        ? value
+        : typeof value === 'string'
+          ? value.split(/[\n,;|]+/g)
+          : [];
+
+    return Array.from(new Set(
+        rawValues
+            .map(item => normalizeCategoryText(item))
+            .filter(item => item.length > 0),
+    ));
+}
+
+function normalizeLocalCategoryOverrides(value: unknown): LocalCategoryOverrides {
+    if (Array.isArray(value)) {
         return {
-            categories: data.categories.map(category => ({ ...category })),
-            products: applyLocalCatalogOverrides(data.products, readLocalCatalogOverrides(brand)).map(product => ({
+            categories: value
+                .map(category => normalizeCategoryRecord(category))
+                .filter((category): category is Category => category !== null),
+            deletedCategoryIds: [],
+        };
+    }
+
+    if (!value || typeof value !== 'object') {
+        return {
+            categories: [],
+            deletedCategoryIds: [],
+        };
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const rawCategories =
+        candidate.categories ??
+        candidate.localCategories ??
+        candidate.items ??
+        [];
+    const rawDeletedCategoryIds =
+        candidate.deletedCategoryIds ??
+        candidate.deletedIds ??
+        candidate.removedCategoryIds ??
+        [];
+
+    return {
+        categories: Array.isArray(rawCategories)
+            ? rawCategories
+                .map(category => normalizeCategoryRecord(category))
+                .filter((category): category is Category => category !== null)
+            : [],
+        deletedCategoryIds: normalizeDeletedCategoryIds(rawDeletedCategoryIds),
+    };
+}
+
+function getLocalCategoryStorageKeysForBrand(brand: 'natura' | 'nikken') {
+    return LOCAL_CATEGORY_STORAGE_KEYS.map(prefix => `${prefix}_${brand}`);
+}
+
+function readLocalCategoryOverrides(brand: 'natura' | 'nikken') {
+    if (!canUseBrowserStorage()) {
+        return normalizeLocalCategoryOverrides(null);
+    }
+
+    const mergedCategoryMap = new Map<string, Category>();
+    const deletedCategoryIds = new Set<string>();
+
+    getLocalCategoryStorageKeysForBrand(brand).forEach(storageKey => {
+        const parsedValue = safeParseJson<unknown>(localStorage.getItem(storageKey), null);
+        const normalizedValue = normalizeLocalCategoryOverrides(parsedValue);
+
+        normalizedValue.categories.forEach(category => {
+            mergedCategoryMap.set(category.id, { ...category });
+            deletedCategoryIds.delete(category.id);
+        });
+
+        normalizedValue.deletedCategoryIds.forEach(categoryId => {
+            deletedCategoryIds.add(categoryId);
+            mergedCategoryMap.delete(categoryId);
+        });
+    });
+
+    return {
+        categories: Array.from(mergedCategoryMap.values()),
+        deletedCategoryIds: Array.from(deletedCategoryIds),
+    } satisfies LocalCategoryOverrides;
+}
+
+function ensureKnownProductCategories(categories: Category[], products: CatalogProduct[]) {
+    const knownCategoryMap = new Map(categories.map(category => [category.id, { ...category }]));
+    let hasUncategorizedProduct = false;
+
+    const normalizedProducts = products.map(product => {
+        const nextCategoryId = normalizeCategoryText(product.categoryId) || 'uncategorized';
+
+        if (nextCategoryId === 'uncategorized') {
+            hasUncategorizedProduct = true;
+        } else if (!knownCategoryMap.has(nextCategoryId)) {
+            knownCategoryMap.set(nextCategoryId, {
+                id: nextCategoryId,
+                name: nextCategoryId,
+            });
+        }
+
+        return {
+            ...product,
+            categoryId: nextCategoryId,
+            benefits: [...product.benefits],
+            deliveryMethods: [...product.deliveryMethods],
+        };
+    });
+
+    if (hasUncategorizedProduct && !knownCategoryMap.has('uncategorized')) {
+        knownCategoryMap.set('uncategorized', {
+            id: 'uncategorized',
+            name: 'Sin categoria',
+        });
+    }
+
+    return {
+        categories: Array.from(knownCategoryMap.values()),
+        products: normalizedProducts,
+    } satisfies CatalogData;
+}
+
+function applyLocalCategoryOverrides(data: CatalogData, brand: 'natura' | 'nikken'): CatalogData {
+    if (!canUseBrowserStorage()) {
+        return ensureKnownProductCategories(
+            data.categories.map(category => ({ ...category })),
+            data.products,
+        );
+    }
+
+    try {
+        const categoryOverrides = readLocalCategoryOverrides(brand);
+        const deletedCategoryIds = new Set(categoryOverrides.deletedCategoryIds);
+        const categoryMap = new Map(
+            data.categories
+                .filter(category => !deletedCategoryIds.has(category.id))
+                .map(category => [category.id, { ...category }]),
+        );
+
+        categoryOverrides.categories.forEach(category => {
+            categoryMap.set(category.id, { ...category });
+            deletedCategoryIds.delete(category.id);
+        });
+
+        const normalizedProducts = data.products.map(product => {
+            const currentCategoryId = normalizeCategoryText(product.categoryId) || 'uncategorized';
+            const nextCategoryId = deletedCategoryIds.has(currentCategoryId)
+                ? 'uncategorized'
+                : currentCategoryId;
+
+            return {
+                ...product,
+                categoryId: nextCategoryId,
+                benefits: [...product.benefits],
+                deliveryMethods: [...product.deliveryMethods],
+            };
+        });
+
+        return ensureKnownProductCategories(Array.from(categoryMap.values()), normalizedProducts);
+    } catch (error) {
+        console.error(`Error applying local category overrides for ${brand}:`, error);
+        return ensureKnownProductCategories(
+            data.categories.map(category => ({ ...category })),
+            data.products,
+        );
+    }
+}
+
+function applyBrandLocalOverrides(data: CatalogData, brand: 'natura' | 'nikken'): CatalogData {
+    if (typeof window === 'undefined') {
+        return ensureKnownProductCategories(
+            data.categories.map(category => ({ ...category })),
+            data.products,
+        );
+    }
+
+    try {
+        const nextProducts = applyLocalCatalogOverrides(
+            data.products,
+            readLocalCatalogOverrides(brand),
+        ).map(product => ({
                 ...product,
                 benefits: [...product.benefits],
                 deliveryMethods: [...product.deliveryMethods],
-            })),
-        };
+            }));
+
+        return applyLocalCategoryOverrides({
+            categories: data.categories.map(category => ({ ...category })),
+            products: nextProducts,
+        }, brand);
     } catch (error) {
         console.error(`Error applying local catalog overrides for ${brand}:`, error);
-        return data;
+        return ensureKnownProductCategories(
+            data.categories.map(category => ({ ...category })),
+            data.products,
+        );
     }
 }
 
