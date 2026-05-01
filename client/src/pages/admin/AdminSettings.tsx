@@ -66,6 +66,10 @@ export default function AdminSettings() {
   const handleSave = () => {
     const siteName = formValues.siteName.trim();
     const slogan = formValues.slogan.trim();
+    const logoImageUrl = formValues.logoImageUrl.trim();
+    const heroImageUrl = formValues.heroImageUrl.trim();
+    const heroEyebrow = formValues.heroEyebrow.trim();
+    const heroDescription = formValues.heroDescription.trim();
     const sellerMessageTemplate = formValues.sellerMessageTemplate.trim();
     const sellerPhone = normalizeSellerPhone(formValues.sellerPhone);
     const connectiaPaymentLink = formValues.connectiaPaymentLink.trim();
@@ -84,6 +88,10 @@ export default function AdminSettings() {
       const savedSettings = saveStorefrontSettings(brand, {
         siteName,
         slogan,
+        logoImageUrl,
+        heroImageUrl,
+        heroEyebrow,
+        heroDescription,
         sellerPhone,
         sellerMessageTemplate,
         connectiaPaymentLink,
@@ -102,6 +110,12 @@ export default function AdminSettings() {
   };
 
   const brandLabel = brand === 'nikken' ? 'Nikken' : 'Natura';
+  const brandInitials = brandLabel
+    .split(' ')
+    .map((token) => token[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
   const previewDescription =
     brand === 'nikken'
       ? 'Vista orientativa para la experiencia de bienestar.'
@@ -181,18 +195,79 @@ export default function AdminSettings() {
                     />
                   </div>
                   <div className="pt-4 border-t border-slate-100 mt-4">
-                    <p className="text-sm font-bold text-slate-800 mb-4">Logotipo principal</p>
-                    <div className="flex items-center gap-6">
-                      <div className="w-20 h-20 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 group hover:border-primary/50 cursor-pointer transition-colors">
-                        <ImageIcon size={24} />
+                    <p className="text-sm font-bold text-slate-800 mb-4">Branding visual</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          URL del logotipo
+                        </label>
+                        <Input
+                          value={formValues.logoImageUrl}
+                          onChange={(event) => updateField('logoImageUrl', event.target.value)}
+                          className="rounded-xl border-slate-200"
+                          placeholder="https://.../logo.png"
+                        />
                       </div>
-                      <div className="space-y-1">
-                        <Button variant="outline" size="sm" className="rounded-lg h-8 text-xs" disabled>
-                          Proximamente
-                        </Button>
-                        <p className="text-[10px] text-slate-400">
-                          Reservamos este espacio para conectar la subida de logo despues.
-                        </p>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          URL de portada
+                        </label>
+                        <Input
+                          value={formValues.heroImageUrl}
+                          onChange={(event) => updateField('heroImageUrl', event.target.value)}
+                          className="rounded-xl border-slate-200"
+                          placeholder="https://.../cover.jpg"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Texto de sello
+                        </label>
+                        <Input
+                          value={formValues.heroEyebrow}
+                          onChange={(event) => updateField('heroEyebrow', event.target.value)}
+                          className="rounded-xl border-slate-200"
+                          placeholder="Catalogo oficial"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Nota de confianza
+                        </label>
+                        <Input
+                          value={formValues.heroDescription}
+                          onChange={(event) => updateField('heroDescription', event.target.value)}
+                          className="rounded-xl border-slate-200"
+                          placeholder="Asesoria personalizada..."
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-400">
+                          {formValues.logoImageUrl ? (
+                            <img
+                              src={formValues.logoImageUrl}
+                              alt={`Logo de ${brandLabel}`}
+                              className="h-full w-full object-contain"
+                            />
+                          ) : (
+                            <ImageIcon size={22} />
+                          )}
+                        </div>
+                        <div className="space-y-1 text-sm text-slate-500">
+                          <p className="font-semibold text-slate-900">
+                            {formValues.heroEyebrow}
+                          </p>
+                          <p>
+                            {formValues.logoImageUrl
+                              ? 'El logo se mostrara desde la URL indicada.'
+                              : 'Si no cargas un logo, la tienda puede usar iniciales o imagotipo simple.'}
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            Esta configuracion queda separada por marca en este navegador.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -354,35 +429,80 @@ export default function AdminSettings() {
                 <Settings className="w-5 h-5 text-primary" />
               </CardHeader>
               <CardContent>
-                <div className="rounded-[1.75rem] border border-primary/10 bg-white p-6 shadow-sm">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-primary">
-                    {brandLabel}
-                  </p>
-                  <h2 className="mt-3 text-2xl font-bold text-slate-900">{formValues.siteName}</h2>
-                  <p className="mt-2 text-slate-500">{formValues.slogan}</p>
-                  <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-                    WhatsApp activo:{' '}
-                    <span className="font-semibold text-slate-900">
-                      {normalizeSellerPhone(formValues.sellerPhone)}
-                    </span>
+                <div className="overflow-hidden rounded-[1.75rem] border border-primary/10 bg-white shadow-sm">
+                  <div
+                    className="relative px-6 py-7"
+                    style={
+                      formValues.heroImageUrl
+                        ? {
+                            backgroundImage: `linear-gradient(135deg, rgba(15,23,42,0.7), rgba(15,23,42,0.18)), url(${formValues.heroImageUrl})`,
+                            backgroundPosition: 'center',
+                            backgroundSize: 'cover',
+                          }
+                        : {
+                            background:
+                              'linear-gradient(135deg, rgba(14,165,233,0.15), rgba(34,197,94,0.08))',
+                          }
+                    }
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-primary">
+                          {brandLabel}
+                        </p>
+                        <h2 className="mt-3 text-2xl font-bold text-slate-900">
+                          {formValues.siteName}
+                        </h2>
+                        <p className="mt-2 max-w-xl text-slate-600">{formValues.slogan}</p>
+                      </div>
+                      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-white/60 bg-white/90 text-sm font-bold text-slate-700 shadow-sm">
+                        {formValues.logoImageUrl ? (
+                          <img
+                            src={formValues.logoImageUrl}
+                            alt={`Logo de ${brandLabel}`}
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          brandInitials
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-5 inline-flex rounded-full border border-white/60 bg-white/85 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {formValues.heroEyebrow}
+                    </div>
                   </div>
-                  <div className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 space-y-2">
-                    <p>
-                      Connectia:{' '}
+                  <div className="p-6">
+                    <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                      WhatsApp activo:{' '}
                       <span className="font-semibold text-slate-900">
-                        {formValues.connectiaPaymentLink}
+                        {normalizeSellerPhone(formValues.sellerPhone)}
                       </span>
-                    </p>
-                    <p>
-                      PayPal:{' '}
-                      <span className="font-semibold text-slate-900">
-                        {formValues.paypalUsername ? `@${formValues.paypalUsername}` : formValues.paypalPaymentLink}
-                      </span>
-                    </p>
-                    <p>
-                      Transferencia:{' '}
-                      <span className="font-semibold text-slate-900">{formValues.transferClabe}</span>
-                    </p>
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-slate-100 bg-white p-4 text-sm text-slate-600">
+                      {formValues.heroDescription}
+                    </div>
+                    <div className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 space-y-2">
+                      <p>
+                        Connectia:{' '}
+                        <span className="font-semibold text-slate-900">
+                          {formValues.connectiaPaymentLink || 'Sin configurar'}
+                        </span>
+                      </p>
+                      <p>
+                        PayPal:{' '}
+                        <span className="font-semibold text-slate-900">
+                          {formValues.paypalUsername
+                            ? `@${formValues.paypalUsername}`
+                            : formValues.paypalPaymentLink || 'Sin configurar'}
+                        </span>
+                      </p>
+                      <p>
+                        Transferencia:{' '}
+                        <span className="font-semibold text-slate-900">
+                          {formValues.transferClabe || 'Sin configurar'}
+                        </span>
+                      </p>
+                    </div>
                   </div>
                 </div>
               </CardContent>
