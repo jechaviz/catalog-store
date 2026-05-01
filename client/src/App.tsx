@@ -1,12 +1,12 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { Toaster } from "@/components/shared/ui/sonner";
 import { TooltipProvider } from "@/components/shared/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "@/components/shared/ui/ErrorBoundary";
 import { Loader2 } from "lucide-react";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { CartProvider } from "./hooks/useCart";
 import Home from "./pages/Home";
 import { BrandProvider } from "./contexts/BrandContext";
@@ -30,6 +30,41 @@ function RouteFallback() {
   );
 }
 
+function AdminRoute({
+  component: Component,
+}: {
+  component: React.ComponentType;
+}) {
+  const { user, isLoading } = useAuth();
+  const [location, setLocation] = useLocation();
+  const isNikkenRoute = location.startsWith("/nikken");
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    if (!user) {
+      setLocation(isNikkenRoute ? "/nikken" : "/");
+      return;
+    }
+
+    if (user.role !== "admin") {
+      setLocation(isNikkenRoute ? "/nikken/profile" : "/profile");
+    }
+  }, [isLoading, isNikkenRoute, setLocation, user]);
+
+  if (isLoading) {
+    return <RouteFallback />;
+  }
+
+  if (!user || user.role !== "admin") {
+    return null;
+  }
+
+  return <Component />;
+}
+
 
 function Router() {
   return (
@@ -43,12 +78,24 @@ function Router() {
         <Route path="/nikken/profile" component={Profile} />
         
         {/* Admin Routes */}
-        <Route path="/admin" component={AdminDashboard} />
-        <Route path="/nikken/admin" component={AdminDashboard} />
-        <Route path="/admin/products" component={ProductManager} />
-        <Route path="/nikken/admin/products" component={ProductManager} />
-        <Route path="/admin/settings" component={AdminSettings} />
-        <Route path="/nikken/admin/settings" component={AdminSettings} />
+        <Route path="/admin">
+          <AdminRoute component={AdminDashboard} />
+        </Route>
+        <Route path="/nikken/admin">
+          <AdminRoute component={AdminDashboard} />
+        </Route>
+        <Route path="/admin/products">
+          <AdminRoute component={ProductManager} />
+        </Route>
+        <Route path="/nikken/admin/products">
+          <AdminRoute component={ProductManager} />
+        </Route>
+        <Route path="/admin/settings">
+          <AdminRoute component={AdminSettings} />
+        </Route>
+        <Route path="/nikken/admin/settings">
+          <AdminRoute component={AdminSettings} />
+        </Route>
 
         
         {/* Customer Account Routes */}
