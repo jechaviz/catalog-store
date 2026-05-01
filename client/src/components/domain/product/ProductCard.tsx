@@ -3,6 +3,12 @@ import { Button } from '@/components/shared/ui/button';
 import { Card } from '@/components/shared/ui/card';
 import type { CatalogProduct } from '@/lib/dataFetcher';
 import { useState, useEffect } from 'react';
+import { useBrand } from '@/contexts/BrandContext';
+import {
+    getProductFallbackImage,
+    readBrandLikeIds,
+    toggleBrandLikeId,
+} from '@/lib/storefrontStorage';
 
 interface ProductCardProps {
     product: CatalogProduct;
@@ -13,25 +19,25 @@ interface ProductCardProps {
 
 export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: ProductCardProps) {
     const [isLiked, setIsLiked] = useState(false);
+    const { brand } = useBrand();
 
-    // Initialize the liked state from localStorage
     useEffect(() => {
-        const likedItems = JSON.parse(localStorage.getItem('natura_likes') || '[]');
-        if (likedItems.includes(product.id)) {
-            setIsLiked(true);
-        }
-    }, [product.id]);
+        const syncLikedState = () => {
+            const likedItems = readBrandLikeIds(brand);
+            setIsLiked(likedItems.includes(product.id));
+        };
+
+        syncLikedState();
+        window.addEventListener('catalog-likes-changed', syncLikedState);
+
+        return () => {
+            window.removeEventListener('catalog-likes-changed', syncLikedState);
+        };
+    }, [brand, product.id]);
 
     const toggleLike = () => {
-        const likedItems = JSON.parse(localStorage.getItem('natura_likes') || '[]');
-        let newLikes;
-        if (isLiked) {
-            newLikes = likedItems.filter((id: string) => id !== product.id);
-        } else {
-            newLikes = [...likedItems, product.id];
-        }
-        localStorage.setItem('natura_likes', JSON.stringify(newLikes));
-        setIsLiked(!isLiked);
+        const newLikes = toggleBrandLikeId(brand, product.id);
+        setIsLiked(newLikes.includes(product.id));
     };
 
     return (
@@ -50,6 +56,15 @@ export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: 
                         {product.inStock ? 'En stock' : 'Bajo pedido'}
                     </span>
                 </div>
+                {/* Brand Tag (Top Right - below Like) */}
+                <div className="absolute top-14 right-4 z-10 flex flex-col gap-1 items-end">
+                    {product.subBrand && (
+                        <span className="text-[9px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-md bg-primary text-white shadow-sm">
+                            {product.subBrand}
+                        </span>
+                    )}
+                </div>
+
                 {/* Like Button (Absolute top right) */}
                 <button
                     onClick={toggleLike}
@@ -74,7 +89,7 @@ export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: 
                     alt={product.name}
                     className="w-full h-full object-contain filter drop-shadow-xl group-hover/image:scale-105 transition-transform duration-500"
                     onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300?text=Imagen+no+disponible';
+                        (e.target as HTMLImageElement).src = getProductFallbackImage(product.brand);
                     }}
                 />
             </div>

@@ -1,15 +1,50 @@
 import { useState } from 'react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { Button } from '@/components/shared/ui/button';
 import { Download, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { CatalogProduct } from '@/lib/dataFetcher';
-import { getLighterShade, getAnalogousColor } from '@/hooks/useColorExtraction';
-import { CONFIG, t } from '@/config';
+import { getAnalogousColor } from '@/hooks/useColorExtraction';
+import { CONFIG } from '@/config';
 
 interface PdfGeneratorProps {
     products: CatalogProduct[];
 }
+
+const KNOWN_BRANDS: Record<string, string> = {
+    natura: 'Natura',
+    nikken: 'Nikken',
+};
+
+const toFileSafeSegment = (value: string) =>
+    value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+
+const getCatalogBranding = (products: CatalogProduct[]) => {
+    const normalizedBrands = Array.from(
+        new Set(
+            products
+                .map(product => product.brand?.trim().toLowerCase())
+                .filter((brand): brand is string => Boolean(brand))
+        )
+    );
+
+    const displayName =
+        normalizedBrands.length === 1
+            ? KNOWN_BRANDS[normalizedBrands[0]] || products[0]?.brand?.trim() || 'Catalogo'
+            : normalizedBrands.length > 1
+                ? 'Catalogo Multimarca'
+                : 'Catalogo';
+
+    const fileSegment = toFileSafeSegment(displayName);
+
+    return {
+        displayName,
+        fileName: fileSegment ? `Catalogo_${fileSegment}_Digital.pdf` : 'Catalogo_Digital.pdf',
+    };
+};
 
 export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
     const [isGenerating, setIsGenerating] = useState(false);
@@ -17,10 +52,26 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
 
     const generatePdf = async () => {
         if (isGenerating) return;
+        if (products.length === 0) {
+            toast.error('No hay productos para exportar.', {
+                description: 'Agrega al menos un producto al catalogo antes de generar el PDF.',
+            });
+            return;
+        }
+
+        const catalogBranding = getCatalogBranding(products);
+
         setIsGenerating(true);
         setProgress(0);
 
+        let iframe: HTMLIFrameElement | null = null;
+
         try {
+            const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+                import('jspdf'),
+                import('html2canvas'),
+            ]);
+
             // Group products by gender to create a structured catalog
             const grouped = products.reduce((acc, product) => {
                 const gender = product.gender || 'unisex';
@@ -56,7 +107,7 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
             };
 
             // Create a hidden iframe for isolated rendering (avoids oklch/Tailwind conflicts)
-            const iframe = document.createElement('iframe');
+            iframe = document.createElement('iframe');
             iframe.id = 'pdf-render-frame';
             iframe.style.position = 'fixed';
             iframe.style.top = '0';
@@ -81,7 +132,7 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
                     <style>
                         body { margin: 0; padding: 0; background-color: #FBFAF9; font-family: sans-serif; }
                         * { box-sizing: border-box; -webkit-print-color-adjust: exact; }
-                        .page { width: 794px; height: 1122px; padding: 60px; position: relative; overflow: hidden; display: flex; flex-direction: column; background-color: #FBFAF9; }
+                        .page { width: 794px; height: 1122px; padding: 40px 60px; position: relative; overflow: hidden; display: flex; flex-direction: column; background-color: #FBFAF9; }
                     </style>
                 </head>
                 <body></body>
@@ -123,7 +174,7 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
                         <!-- Header -->
                         <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 50px; border-bottom: 2px solid ${primaryColor}40; padding-bottom: 20px; position: relative; z-index: 10; width: 100%;">
                             <div style="flex: 1;">
-                                <h1 style="margin: 0; color: ${primaryColor}; font-size: 38px; font-weight: 900; letter-spacing: -1.5px;">natura</h1>
+                                <h1 style="margin: 0; color: ${primaryColor}; font-size: 38px; font-weight: 900; letter-spacing: -1.5px;">${catalogBranding.displayName}</h1>
                                 <p style="margin: 5px 0 0; color: #666; font-size: 14px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">Catálogo Digital ${CONFIG.YEAR}</p>
                             </div>
                             <div style="text-align: right;">
@@ -137,7 +188,7 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
                         <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 10; gap: 40px; width: 100%;">
                             
                             <!-- Image Section -->
-                            <div style="position: relative; width: 450px; height: 450px; display: flex; align-items: center; justify-content: center;">
+                            <div style="position: relative; width: 420px; height: 420px; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
                                 <div style="position: absolute; inset: 0; background-color: ${primaryColor}15; border-radius: 50%;"></div>
                                 ${safeBase64Image
                             ? `<img src="${safeBase64Image}" style="max-width: 90%; max-height: 90%; object-fit: contain; position: relative; z-index: 20; border-radius: 30px; box-shadow: 0 30px 60px rgba(0,0,0,0.1); border: 8px solid white;" />`
@@ -152,18 +203,16 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
                                 <p style="margin: 0 auto; color: #444; font-size: 18px; line-height: 1.6; max-width: 85%; margin-bottom: 45px;">${product.description}</p>
 
                                 <!-- Specs Grid -->
-                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; width: 100%; margin-bottom: 20px;">
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; width: 100%; margin-bottom: 20px;">
                                     <div style="background: white; padding: 15px; border-radius: 15px; border: 1px solid #EEE;">
                                         <p style="margin: 0; font-size: 10px; text-transform: uppercase; color: #888; font-weight: 700;">Código</p>
                                         <p style="margin: 5px 0 0; font-size: 18px; font-weight: 800; color: #111;">${product.id.split('-')[0].toUpperCase()}</p>
                                     </div>
                                     <div style="background: white; padding: 15px; border-radius: 15px; border: 1px solid #EEE;">
-                                        <p style="margin: 0; font-size: 10px; text-transform: uppercase; color: #888; font-weight: 700;">Stock</p>
-                                        <p style="margin: 5px 0 0; font-size: 16px; font-weight: 800; color: ${product.inStock ? '#15803d' : '#991b1b'};">${product.inStock ? 'Disponible' : 'Agotado'}</p>
-                                    </div>
-                                    <div style="background: white; padding: 15px; border-radius: 15px; border: 1px solid #EEE;">
-                                        <p style="margin: 0; font-size: 10px; text-transform: uppercase; color: #888; font-weight: 700;">Entrega</p>
-                                        <p style="margin: 5px 0 0; font-size: 14px; font-weight: 800; color: #111;">${product.deliveryTime}</p>
+                                        <p style="margin: 0; font-size: 10px; text-transform: uppercase; color: #888; font-weight: 700;">Disponibilidad</p>
+                                        <p style="margin: 5px 0 0; font-size: 14px; font-weight: 800; color: ${product.inStock ? '#15803d' : '#991b1b'};">
+                                            ${product.inStock ? 'Disponible - Entrega Inmediata' : `Bajo Pedido (${product.deliveryTime})`}
+                                        </p>
                                     </div>
                                     <div style="background: ${primaryColor}; padding: 15px; border-radius: 15px; color: white;">
                                         <p style="margin: 0; font-size: 10px; text-transform: uppercase; opacity: 0.9; font-weight: 700;">Precio</p>
@@ -178,7 +227,7 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
                             <div style="display: flex; gap: 8px;">
                                 ${product.benefits.slice(0, 2).map(b => `<span style="padding: 4px 12px; background: white; border-radius: 100px; font-size: 11px; color: #666; border: 1px solid #EEE;">${b.length > 30 ? b.substring(0, 27) + '...' : b}</span>`).join('')}
                             </div>
-                            <p style="margin: 0; font-size: 11px; color: #AAA; font-weight: 500;">www.natura.com.mx • Página ${processedCount} de ${totalProducts}</p>
+                            <p style="margin: 0; font-size: 11px; color: #AAA; font-weight: 500;">${catalogBranding.displayName} • Página ${processedCount} de ${totalProducts}</p>
                         </div>
                     `;
 
@@ -205,13 +254,21 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
                 }
             }
 
-            document.body.removeChild(iframe);
-            doc.save('Catalogo_Natura_Digital.pdf');
+            doc.save(catalogBranding.fileName);
+            toast.success('PDF generado con exito.', {
+                description: `Se inicio la descarga de ${catalogBranding.fileName} con ${totalProducts} producto${totalProducts === 1 ? '' : 's'}.`,
+            });
 
         } catch (error) {
             console.error('Error final generating PDF:', error);
-            alert(`Error al generar el PDF: ${error instanceof Error ? error.message : String(error)}. Este problema suele ocurrir por incompatibilidad de colores con Tailwind v4. Se ha implementado un aislamiento para corregirlo.`);
+            const errorMessage = error instanceof Error ? error.message : 'Ocurrio un error inesperado.';
+            toast.error('No pudimos generar el PDF del catalogo.', {
+                description: `${errorMessage} Intenta nuevamente en unos segundos.`,
+            });
         } finally {
+            if (iframe && document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+            }
             setIsGenerating(false);
             setProgress(0);
         }

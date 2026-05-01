@@ -1,25 +1,27 @@
 /**
- * Central configuration for the Natura Catalog App
+ * Central configuration for the catalog app
  */
 
 export const CONFIG = {
-    APP_NAME: 'Natura Catálogo Digital',
+    APP_NAME: 'Catálogo Digital',
     VERSION: '1.0.0',
     YEAR: 2026,
 
     // Contact & Sales
     SELLER: {
-        NAME: 'Consultor Natura',
+        NAME: 'Asesor de ventas',
         PHONE: '5215573456073',
         CLABE: '012345678901234567 (Bancomer)',
         WHATSAPP_BASE_URL: 'https://wa.me/',
+        MERCADO_PAGO_LINK: 'https://link.mercadopago.com.mx/tu-tienda',
+        PAYU_ID: '12345',
     },
 
     // Shipping
     SHIPPING: {
         FREE_THRESHOLD: 1500,
         DEFAULT_COST: 99,
-        DELIVERY_TIME_ESTIMATE: 'Entrega Inmediata',
+        DELIVERY_TIME_ESTIMATE: 'Entrega inmediata',
     },
 
     // UI Aesthetic defaults
@@ -43,18 +45,18 @@ export const CONFIG = {
                 FREE: '¡Gratis!',
             },
             CHECKOUT: {
-                TITLE: 'Finalizar Compra',
-                SHIPPING_DATA: 'Datos de Envío',
-                PAYMENT_METHOD: 'Método de Pago',
-                CONFIRM_ORDER: 'Confirmar Pedido',
+                TITLE: 'Finalizar compra',
+                SHIPPING_DATA: 'Datos de envío',
+                PAYMENT_METHOD: 'Método de pago',
+                CONFIRM_ORDER: 'Confirmar pedido',
                 ORDER_SUMMARY: 'Resumen de tu pedido',
             },
             CATALOG: {
                 DOWNLOAD_PDF: 'Descargar PDF',
                 GENERATING: 'Generando...',
                 GENDER_LABELS: {
-                    female: 'Para Ella',
-                    male: 'Para Él',
+                    female: 'Para ella',
+                    male: 'Para él',
                     unisex: 'Unisex',
                 }
             }

@@ -1,23 +1,31 @@
-import { useEffect, useState } from 'react';
-import { useCart } from '@/hooks/useCart';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
+import { toast } from 'sonner';
+import { CreditCard, ArrowLeft, Banknote, Building2, Loader2 } from 'lucide-react';
+import { useCart } from '@/hooks/useCart';
 import { Button } from '@/components/shared/ui/button';
 import { Input } from '@/components/shared/ui/input';
 import { Textarea } from '@/components/shared/ui/textarea';
-import { MessageCircle, CreditCard, ArrowLeft, Banknote, Building2, Loader2 } from 'lucide-react';
-import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
 import { client as odooClient } from '@/lib/odoo';
 import { CREATE_ORDER } from '@/lib/odooQueries';
-import { CONFIG, t } from '@/config';
+import { CONFIG } from '@/config';
+import { useBrand } from '@/contexts/BrandContext';
+import { getProductFallbackImage } from '@/lib/storefrontStorage';
+import {
+    createFallbackOrderId,
+    mapCartItemsToOrderItems,
+    upsertOrder,
+} from '@/lib/orderStorage';
 
 type PaymentMethod = 'whatsapp_cash' | 'transfer' | 'connectia' | 'paypal';
 
 export default function Checkout() {
     const { items, subtotal, clearCart } = useCart();
     const [, setLocation] = useLocation();
-    const { theme } = useTheme();
     const { user } = useAuth();
+    const { brand, isNikken } = useBrand();
+    const hadItemsOnLoad = useRef(items.length > 0);
 
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
@@ -25,16 +33,19 @@ export default function Checkout() {
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('whatsapp_cash');
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Pre-fill data if user is logged in
     useEffect(() => {
         if (user) {
             setCustomerName(user.name || '');
         }
     }, [user]);
 
-    // If cart is empty, redirect back
+    useEffect(() => {
+        if (!hadItemsOnLoad.current && items.length === 0) {
+            setLocation(isNikken ? '/nikken' : '/');
+        }
+    }, [items.length, isNikken, setLocation]);
+
     if (items.length === 0) {
-        setLocation('/');
         return null;
     }
 
@@ -42,34 +53,40 @@ export default function Checkout() {
     const total = subtotal + shippingCost;
 
     const generateOrderDetails = () => {
-        let orderText = `*NUEVO PEDIDO DIGITAL*\n\n`;
+        let orderText = '*NUEVO PEDIDO DIGITAL*\n\n';
         orderText += `*Cliente:* ${customerName}\n`;
-        orderText += `*Teléfono:* ${customerPhone}\n`;
-        orderText += `*Dirección:* ${customerAddress}\n\n`;
-        orderText += `*Artículos:*\n`;
+        orderText += `*Telefono:* ${customerPhone}\n`;
+        orderText += `*Direccion:* ${customerAddress}\n\n`;
+        orderText += '*Articulos:*\n';
         items.forEach(item => {
             orderText += `- ${item.quantity}x ${item.product.name} ($${(item.product.price * item.quantity).toFixed(2)})\n`;
         });
         orderText += `\n*Subtotal:* $${subtotal.toFixed(2)}\n`;
-        orderText += `*Envío:* $${shippingCost.toFixed(2)}\n`;
+        orderText += `*Envio:* $${shippingCost.toFixed(2)}\n`;
         orderText += `*TOTAL:* $${total.toFixed(2)}\n\n`;
         return orderText;
     };
 
+    const openWhatsApp = (message: string) => {
+        window.open(
+            `${CONFIG.SELLER.WHATSAPP_BASE_URL}${CONFIG.SELLER.PHONE}?text=${encodeURIComponent(message)}`,
+            '_blank'
+        );
+    };
+
     const handleCheckout = async () => {
-        if (!customerName || !customerPhone || !customerAddress) {
-            alert('Por favor, completa todos tus datos de envío.');
+        if (!customerName.trim() || !customerPhone.trim() || !customerAddress.trim()) {
+            toast.error('Completa tu nombre, telefono y direccion de entrega.');
             return;
         }
 
         setIsProcessing(true);
 
         try {
-            // 1. Create Order in Odoo using GraphQL
             const itemsInput = items.map(item => ({
-                product_id: parseInt(item.product.id),
+                product_id: Number.parseInt(item.product.id, 10),
                 quantity: item.quantity,
-                price_unit: item.product.price
+                price_unit: item.product.price,
             }));
 
             const response = await odooClient.mutate({
@@ -78,135 +95,163 @@ export default function Checkout() {
                     customerName,
                     customerPhone,
                     customerAddress,
-                    items: itemsInput
-                }
+                    items: itemsInput,
+                },
             });
 
             const odooOrder = (response.data as any)?.createOrder?.order;
-            const orderId = odooOrder?.id || 'OD-NEW';
-            const orderName = odooOrder?.name || 'Nuevo Pedido';
+            const orderId = String(odooOrder?.id || odooOrder?.name || createFallbackOrderId(brand));
+            const orderName = odooOrder?.name || orderId;
 
             const baseOrder = generateOrderDetails();
             let finalMessage = '';
 
             if (paymentMethod === 'whatsapp_cash') {
-                finalMessage = `${baseOrder}*Método de Pago:* Pago contra entrega (Efectivo/Terminal). \n\nOrden Odoo: ${orderName}\nPor favor confirmar recepción del pedido.`;
-                window.open(`${CONFIG.SELLER.WHATSAPP_BASE_URL}${CONFIG.SELLER.PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
-            }
-            else if (paymentMethod === 'transfer') {
-                alert(`Por favor, transfiere la cantidad de $${total.toFixed(2)} a la CLABE:\n${CONFIG.SELLER.CLABE}\n\nPresiona OK para abrir WhatsApp y enviar tu comprobante.`);
-                finalMessage = `${baseOrder}*Método de Pago:* Transferencia Bancaria. \n\nOrden Odoo: ${orderName}\nAdjunto mi comprobante de pago para proceder con el envío.`;
-                window.open(`${CONFIG.SELLER.WHATSAPP_BASE_URL}${CONFIG.SELLER.PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
-            }
-            else if (paymentMethod === 'connectia') {
-                const directLink = items.find(i => i.product.paymentLink)?.product.paymentLink || "https://connectia.mx/tu-tienda";
+                finalMessage = `${baseOrder}*Metodo de Pago:* Pago contra entrega (Efectivo/Terminal).\n\nOrden Odoo: ${orderName}\nPor favor confirmar recepcion del pedido.`;
+                openWhatsApp(finalMessage);
+            } else if (paymentMethod === 'transfer') {
+                toast('Transferencia bancaria', {
+                    description: `Transfiere $${total.toFixed(2)} a la CLABE ${CONFIG.SELLER.CLABE} y envia tu comprobante por WhatsApp.`,
+                });
+                finalMessage = `${baseOrder}*Metodo de Pago:* Transferencia bancaria.\n\nOrden Odoo: ${orderName}\nAdjunto mi comprobante de pago para proceder con el envio.`;
+                openWhatsApp(finalMessage);
+            } else if (paymentMethod === 'connectia') {
+                const directLink =
+                    items.find(item => item.product.paymentLink)?.product.paymentLink ||
+                    'https://connectia.mx/tu-tienda';
                 window.open(directLink, '_blank');
-            }
-            else if (paymentMethod === 'paypal') {
+            } else if (paymentMethod === 'paypal') {
                 window.open(`https://paypal.me/tuusuario/${total}`, '_blank');
             }
 
-            clearCart();
-            setLocation(user ? '/profile' : '/');
+            upsertOrder({
+                id: orderId,
+                brand,
+                status: paymentMethod === 'transfer' || paymentMethod === 'connectia' || paymentMethod === 'paypal' ? 'paid' : 'processing',
+                paymentMethod,
+                subtotal,
+                shippingCost,
+                total,
+                customerName,
+                customerPhone,
+                customerAddress,
+                items: mapCartItemsToOrderItems(items),
+                carrier: paymentMethod === 'whatsapp_cash' ? 'Confirmacion por WhatsApp' : 'Mensajeria por asignar',
+                trackingNumber: odooOrder?.name ? String(odooOrder.name) : undefined,
+            });
 
+            clearCart();
+            setLocation(isNikken ? `/nikken/account/tracking/${orderId}` : `/account/tracking/${orderId}`);
         } catch (error) {
             console.error('Error saving order to Odoo:', error);
-            // Fallback: Proceed with WhatsApp even if DB save fails, but notify
-            alert('Hubo un problema al conectar con el servidor de Odoo, pero procederemos vía WhatsApp.');
+            toast.error('No pudimos guardar el pedido en Odoo; seguimos por WhatsApp.');
 
+            const fallbackOrderId = createFallbackOrderId(brand);
             const baseOrder = generateOrderDetails();
-            const finalMessage = `${baseOrder}*Aviso:* El pedido no se pudo guardar en el sistema digital automáticamente. Por favor confirmar manualmente.`;
-            window.open(`${CONFIG.SELLER.WHATSAPP_BASE_URL}${CONFIG.SELLER.PHONE}?text=${encodeURIComponent(finalMessage)}`, '_blank');
+            const finalMessage = `${baseOrder}*Aviso:* El pedido no se pudo guardar automaticamente en el sistema. Referencia local: ${fallbackOrderId}. Por favor confirmar manualmente.`;
+            openWhatsApp(finalMessage);
+
+            upsertOrder({
+                id: fallbackOrderId,
+                brand,
+                status: 'pending',
+                paymentMethod,
+                subtotal,
+                shippingCost,
+                total,
+                customerName,
+                customerPhone,
+                customerAddress,
+                items: mapCartItemsToOrderItems(items),
+                carrier: 'Confirmacion por WhatsApp',
+            });
 
             clearCart();
-            setLocation('/');
+            setLocation(isNikken ? `/nikken/account/tracking/${fallbackOrderId}` : `/account/tracking/${fallbackOrderId}`);
         } finally {
             setIsProcessing(false);
         }
     };
 
     return (
-        <div className={`min-h-screen bg-background selection:bg-primary/20 transition-colors duration-500 pb-20`}>
-            {/* Checkout Header */}
+        <div className="min-h-screen bg-background selection:bg-primary/20 transition-colors duration-500 pb-20">
             <header className="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-md border-b border-primary/10 shadow-sm">
                 <div className="container mx-auto px-4 h-16 flex items-center gap-4">
                     <button
-                        onClick={() => setLocation('/')}
+                        onClick={() => setLocation(isNikken ? '/nikken' : '/')}
                         className="p-2 hover:bg-secondary/10 rounded-full text-foreground/80 hover:text-primary transition-colors"
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <h1 className="heading text-xl md:text-2xl font-bold text-foreground">
-                        Finalizar Compra
+                    <h1 className={`heading text-xl md:text-2xl font-bold ${isNikken ? 'text-primary' : 'text-foreground'}`}>
+                        {isNikken ? 'Finalizar Pedido Nikken' : 'Finalizar Compra'}
                     </h1>
                 </div>
             </header>
 
             <main className="container mx-auto px-4 py-8 md:py-12 max-w-5xl">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
-
-                    {/* Left Column: Form & Payment */}
                     <div className="lg:col-span-7 space-y-8">
-
-                        {/* 1. Datos de Envío */}
                         <section className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-primary/10">
                             <h2 className="heading text-2xl font-bold mb-6 text-foreground flex items-center gap-3">
                                 <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm">1</span>
-                                Datos de Envío
+                                Datos de envio
                             </h2>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-2 mb-1 block">Nombre Completo</label>
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-2 mb-1 block">
+                                        Nombre completo
+                                    </label>
                                     <Input
                                         value={customerName}
                                         onChange={(e) => setCustomerName(e.target.value)}
-                                        placeholder="Ej. María Pérez"
+                                        placeholder="Ej. Maria Perez"
                                         className="rounded-xl border-border/60 bg-secondary/5 focus-visible:ring-primary/30 h-12"
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-2 mb-1 block">Teléfono (WhatsApp)</label>
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-2 mb-1 block">
+                                        Telefono (WhatsApp)
+                                    </label>
                                     <Input
                                         value={customerPhone}
                                         onChange={(e) => setCustomerPhone(e.target.value)}
-                                        placeholder="10 dígitos"
+                                        placeholder="10 digitos"
                                         type="tel"
                                         className="rounded-xl border-border/60 bg-secondary/5 focus-visible:ring-primary/30 h-12"
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-2 mb-1 block">Dirección de Entrega</label>
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-2 mb-1 block">
+                                        Direccion de entrega
+                                    </label>
                                     <Textarea
                                         value={customerAddress}
                                         onChange={(e) => setCustomerAddress(e.target.value)}
-                                        placeholder="Calle, Número, Colonia, Código Postal, Referencias..."
+                                        placeholder="Calle, Numero, Colonia, Codigo Postal, Referencias..."
                                         className="rounded-xl border-border/60 bg-secondary/5 focus-visible:ring-primary/30 min-h-[100px] resize-none"
                                     />
                                 </div>
                             </div>
                         </section>
 
-                        {/* 2. Método de Pago */}
                         <section className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-primary/10">
                             <h2 className="heading text-2xl font-bold mb-6 text-foreground flex items-center gap-3">
                                 <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm">2</span>
-                                Método de Pago
+                                Metodo de pago
                             </h2>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                                {/* Efectivo / Contra Entrega */}
                                 <div
                                     onClick={() => setPaymentMethod('whatsapp_cash')}
                                     className={`cursor-pointer rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentMethod === 'whatsapp_cash' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
                                 >
                                     <Banknote className={`w-8 h-8 ${paymentMethod === 'whatsapp_cash' ? 'text-primary' : 'text-muted-foreground'}`} />
                                     <div>
-                                        <p className="font-bold heading text-sm">Pago a la Entrega</p>
-                                        <p className="text-xs text-muted-foreground mt-1">Acuerda entrega física (Efectivo/Terminal)</p>
+                                        <p className="font-bold heading text-sm">Pago a la entrega</p>
+                                        <p className="text-xs text-muted-foreground mt-1">Acuerda entrega fisica (Efectivo/Terminal)</p>
                                     </div>
                                 </div>
 
-                                {/* Transferencia */}
                                 <div
                                     onClick={() => setPaymentMethod('transfer')}
                                     className={`cursor-pointer rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentMethod === 'transfer' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
@@ -214,11 +259,10 @@ export default function Checkout() {
                                     <Building2 className={`w-8 h-8 ${paymentMethod === 'transfer' ? 'text-primary' : 'text-muted-foreground'}`} />
                                     <div>
                                         <p className="font-bold heading text-sm">Transferencia</p>
-                                        <p className="text-xs text-muted-foreground mt-1">Envía comprobante vía WhatsApp</p>
+                                        <p className="text-xs text-muted-foreground mt-1">Envia comprobante por WhatsApp</p>
                                     </div>
                                 </div>
 
-                                {/* Connectia */}
                                 <div
                                     onClick={() => setPaymentMethod('connectia')}
                                     className={`cursor-pointer rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentMethod === 'connectia' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
@@ -226,11 +270,10 @@ export default function Checkout() {
                                     <CreditCard className={`w-8 h-8 ${paymentMethod === 'connectia' ? 'text-primary' : 'text-muted-foreground'}`} />
                                     <div>
                                         <p className="font-bold heading text-sm">Connectia (TDC / TDD)</p>
-                                        <p className="text-xs text-muted-foreground mt-1">Pago seguro en línea</p>
+                                        <p className="text-xs text-muted-foreground mt-1">Pago seguro en linea</p>
                                     </div>
                                 </div>
 
-                                {/* PayPal */}
                                 <div
                                     onClick={() => setPaymentMethod('paypal')}
                                     className={`cursor-pointer rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentMethod === 'paypal' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
@@ -243,12 +286,10 @@ export default function Checkout() {
                                         <p className="text-xs text-muted-foreground mt-1">Paga con tu cuenta PayPal</p>
                                     </div>
                                 </div>
-
                             </div>
                         </section>
                     </div>
 
-                    {/* Right Column: Order Summary */}
                     <div className="lg:col-span-5">
                         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-primary/10 sticky top-24">
                             <h3 className="heading text-xl font-bold mb-6 text-foreground">Resumen de tu pedido</h3>
@@ -257,7 +298,14 @@ export default function Checkout() {
                                 {items.map(item => (
                                     <div key={item.product.id} className="flex items-center gap-4">
                                         <div className="w-16 h-16 rounded-xl bg-secondary/10 p-1 flex-shrink-0">
-                                            <img src={item.product.imageUrl} alt={item.product.name} className="w-full h-full object-contain mix-blend-multiply" />
+                                            <img
+                                                src={item.product.imageUrl}
+                                                alt={item.product.name}
+                                                className="w-full h-full object-contain mix-blend-multiply"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).src = getProductFallbackImage(item.product.brand);
+                                                }}
+                                            />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="heading text-sm font-bold truncate">{item.product.name}</p>
@@ -276,8 +324,8 @@ export default function Checkout() {
                                     <span>${subtotal.toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-muted-foreground text-sm">
-                                    <span>Envío</span>
-                                    <span>{shippingCost === 0 ? '¡Gratis!' : `$${shippingCost.toFixed(2)}`}</span>
+                                    <span>Envio</span>
+                                    <span>{shippingCost === 0 ? 'Gratis' : `$${shippingCost.toFixed(2)}`}</span>
                                 </div>
                                 <div className="flex justify-between items-center text-foreground font-black text-xl heading pt-2 border-t border-border/50">
                                     <span>Total</span>
@@ -296,15 +344,16 @@ export default function Checkout() {
                                         Procesando...
                                     </>
                                 ) : (
-                                    'Confirmar Pedido'
+                                    'Confirmar pedido'
                                 )}
                             </Button>
                             <p className="text-center text-xs text-muted-foreground mt-4">
-                                Al confirmar, estás aceptando que el inventario está sujeto a disponibilidad por parte del consultor.
+                                {isNikken
+                                    ? 'Al confirmar, aceptas que el inventario depende de la disponibilidad del distribuidor independiente.'
+                                    : 'Al confirmar, aceptas que el inventario depende de la disponibilidad del consultor.'}
                             </p>
                         </div>
                     </div>
-
                 </div>
             </main>
         </div>

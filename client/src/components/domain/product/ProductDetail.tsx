@@ -4,6 +4,10 @@ import { Heart, ShoppingBag, X } from 'lucide-react';
 import { useLocation } from "wouter";
 import { useColorExtraction, getLighterShade, getDarkerShade, getAnalogousColor } from '@/hooks/useColorExtraction';
 import type { CatalogProduct } from '@/lib/dataFetcher';
+import { useBrand } from '@/contexts/BrandContext';
+import { SocialSharePanel } from '@/components/shared/ui/SocialSharePanel';
+import { ExportableProduct } from '@/components/domain/product/ExportableProduct';
+import { getProductFallbackImage } from '@/lib/storefrontStorage';
 
 interface ProductDetailProps {
     product: CatalogProduct | null;
@@ -23,6 +27,7 @@ export function ProductDetail({
     onToggleLike,
 }: ProductDetailProps) {
     const [_, setLocation] = useLocation();
+    const { isNikken } = useBrand();
     const colorData = useColorExtraction(product?.imageUrl || '');
     const primaryColor = colorData?.hex || '#F97316';
     const lightColor = getLighterShade(primaryColor, 35);
@@ -37,7 +42,7 @@ export function ProductDetail({
     const handleDirectCheckout = () => {
         onBuy(product);
         setTimeout(() => {
-            setLocation('/checkout');
+            setLocation(isNikken ? '/nikken/checkout' : '/checkout');
         }, 800);
     };
 
@@ -245,6 +250,10 @@ export function ProductDetail({
                                             </div>
                                         </div>
                                     </div>
+
+                                    <div className="mt-8 animate-fade-in" style={{ animationDelay: '0.5s' }}>
+                                        <SocialSharePanel product={product} primaryColor={primaryColor} />
+                                    </div>
                                 </div>
 
                                 {/* Right side - Image with elaborate decorative elements */}
@@ -272,7 +281,7 @@ export function ProductDetail({
                                             alt={product.name}
                                             className="relative z-20 w-full h-full object-cover rounded-[45%] drop-shadow-2xl transition-transform duration-700 hover:scale-[1.08]"
                                             onError={(e) => {
-                                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400?text=Natura';
+                                                (e.target as HTMLImageElement).src = getProductFallbackImage(product.brand);
                                             }}
                                         />
                                     </div>
@@ -312,6 +321,9 @@ export function ProductDetail({
                             />
                         </svg>
                     </div>
+
+                    <ExportableProduct product={product} type="post" primaryColor={primaryColor} />
+                    <ExportableProduct product={product} type="story" primaryColor={primaryColor} />
                 </div>
             </DialogContent>
         </Dialog>

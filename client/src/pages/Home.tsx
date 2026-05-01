@@ -1,17 +1,37 @@
-import { useState, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { fetchCatalogData, type CatalogData, type CatalogProduct } from '@/lib/dataFetcher';
 import { Navbar } from '@/components/app/layout/Navbar';
 import { ProductCard } from '@/components/domain/product/ProductCard';
-import { ProductDetail } from '@/components/domain/product/ProductDetail';
-import { CartDrawer } from '@/components/domain/cart/CartDrawer';
 import { ThemeSelector } from '@/components/shared/ui/ThemeSelector';
-import { CatalogPdfGenerator } from '@/components/domain/catalog/CatalogPdfGenerator';
+import { LazyCatalogPdfGenerator } from '@/components/domain/catalog/LazyCatalogPdfGenerator';
 import { Footer } from '@/components/app/layout/Footer';
 import { useCart } from '@/hooks/useCart';
 import { useTheme } from '@/hooks/useTheme';
 import { Loader2 } from 'lucide-react';
-import { ContactFormModal } from '@/components/shared/ui/ContactFormModal';
+import { useBrand } from '@/contexts/BrandContext';
 import { useLocation } from 'wouter';
+import {
+  readBrandLikeIds,
+  toggleBrandLikeId,
+} from '@/lib/storefrontStorage';
+
+const ProductDetail = lazy(() =>
+  import('@/components/domain/product/ProductDetail').then(module => ({
+    default: module.ProductDetail,
+  }))
+);
+
+const CartDrawer = lazy(() =>
+  import('@/components/domain/cart/CartDrawer').then(module => ({
+    default: module.CartDrawer,
+  }))
+);
+
+const ContactFormModal = lazy(() =>
+  import('@/components/shared/ui/ContactFormModal').then(module => ({
+    default: module.ContactFormModal,
+  }))
+);
 
 export default function Home() {
   const [data, setData] = useState<CatalogData | null>(null);
@@ -23,6 +43,7 @@ export default function Home() {
 
   // Custom Hooks
   const { theme } = useTheme();
+  const { brand, isNikken } = useBrand();
   const cart = useCart();
 
   // Modal State
@@ -32,8 +53,11 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       try {
-        const catalogInfo = await fetchCatalogData();
+        setLoading(true);
+        const catalogInfo = await fetchCatalogData(brand);
         setData(catalogInfo);
+        // Reset category when brand changes
+        setActiveCategory('');
       } catch (error) {
         console.error("Error loading storefront data:", error);
       } finally {
@@ -41,7 +65,7 @@ export default function Home() {
       }
     }
     loadData();
-  }, []);
+  }, [brand]);
 
   if (loading) {
     return (
@@ -73,9 +97,11 @@ export default function Home() {
 
     // Theme filtering: Show products matching the theme OR unisex. If no search is active, we strongly filter.
     // If user is searching, let them find anything.
-    const matchesTheme = searchQuery !== '' || product.gender === theme || product.gender === 'unisex';
+    // For Nikken, we show all products regardless of theme.
+    const matchesTheme = isNikken || searchQuery !== '' || product.gender === theme || product.gender === 'unisex';
 
     return matchesCategory && matchesSearch && matchesTheme;
+
   });
 
   return (
@@ -91,25 +117,32 @@ export default function Home() {
       />
 
       <main className="container mx-auto px-4 py-8 md:py-12 relative min-h-[80vh]">
-        {/* Organic Background Elements for the whole page */}
-        <div className="fixed top-20 left-10 w-64 h-64 bg-primary/5 rounded-full filter blur-[100px] pointer-events-none -z-10 transition-colors duration-500"></div>
-        <div className="fixed bottom-20 right-10 w-96 h-96 bg-secondary/10 rounded-full filter blur-[120px] pointer-events-none -z-10 transition-colors duration-500"></div>
 
         {/* Page Header / Hero Area (Optional, hidden when searching) */}
         {!searchQuery && !activeCategory && (
           <div className="mb-12 md:mb-16 text-center max-w-3xl mx-auto px-4">
             <div className="inline-flex flex-col sm:flex-row items-center gap-4 mb-6">
               <div className="px-4 py-1.5 rounded-full bg-primary/10 text-primary font-bold text-xs uppercase tracking-widest transition-colors duration-500">
-                Colección 2026
+                {isNikken ? 'Tecnología Japonesa' : 'Colección 2026'}
               </div>
-              <ThemeSelector />
-              {data?.products && <CatalogPdfGenerator products={data.products} />}
+              {!isNikken && <ThemeSelector />}
+              {data?.products && <LazyCatalogPdfGenerator products={data.products} />}
             </div>
             <h2 className="display text-4xl md:text-5xl lg:text-6xl font-black text-foreground mb-6 leading-tight transition-colors duration-500">
-              Descubre tu <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary transition-colors duration-500">Bienestar</span>
+              {isNikken ? (
+                <>
+                  Transforma tu <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary transition-colors duration-500">Entorno</span>
+                </>
+              ) : (
+                <>
+                  Descubre tu <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary transition-colors duration-500">Bienestar</span>
+                </>
+              )}
             </h2>
             <p className="body text-lg text-muted-foreground transition-colors duration-500">
-              Explora la línea completa de Natura. Cosméticos y fragancias inspirados en la riqueza de la biodiversidad, creados para cuidar de ti y del planeta.
+              {isNikken 
+                ? 'Líder mundial en bienestar y salud. Descubre cómo el agua, el aire, el descanso y la nutrición pueden cambiar tu vida con tecnología magnética avanzada.' 
+                : 'Explora la línea completa de Natura. Cosméticos y fragancias inspirados en la riqueza de la biodiversidad, creados para cuidar de ti y del planeta.'}
             </p>
           </div>
         )}
@@ -127,11 +160,12 @@ export default function Home() {
             <p className="text-sm text-muted-foreground mt-2 ml-4 font-semibold">{filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} encontrado{filteredProducts.length !== 1 ? 's' : ''}</p>
           </div>
 
-          {(searchQuery || activeCategory) && (
+          {!isNikken && (searchQuery || activeCategory) && (
             <div className="hidden sm:block">
               <ThemeSelector />
             </div>
           )}
+
         </div>
 
         {/* Product Grid */}
@@ -154,55 +188,62 @@ export default function Home() {
             </div>
             <h3 className="heading text-2xl font-bold text-foreground mb-2 transition-colors duration-500">No encontramos lo que buscas</h3>
             <p className="body text-muted-foreground max-w-md transition-colors duration-500">
-              Intenta con un término diferente o ajusta tus preferencias de género en el menú.
+              {isNikken 
+                ? 'Intenta con un término diferente o explora nuestras categorías de bienestar.' 
+                : 'Intenta con un término diferente o ajusta tus preferencias de género en el menú.'}
             </p>
+
           </div>
         )}
       </main>
 
       {/* Slide-Out Shopping Cart */}
-      <CartDrawer
-        isOpen={cart.isDrawerOpen}
-        onClose={() => cart.setIsDrawerOpen(false)}
-        onProceedToCheckout={() => {
-          cart.setIsDrawerOpen(false);
-          setLocation('/checkout');
-        }}
-      />
+      {cart.isDrawerOpen && (
+        <Suspense fallback={null}>
+          <CartDrawer
+            isOpen={cart.isDrawerOpen}
+            onClose={() => cart.setIsDrawerOpen(false)}
+            onProceedToCheckout={() => {
+              cart.setIsDrawerOpen(false);
+              setLocation(isNikken ? '/nikken/checkout' : '/checkout');
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Immersive Product Detail Modal */}
-      <ProductDetail
-        product={selectedProduct}
-        isOpen={!!selectedProduct}
-        onClose={() => setSelectedProduct(null)}
-        onBuy={(product) => {
-          cart.addItem(product, 1);
-          setSelectedProduct(null); // Close the detail view to show cart
-        }}
-        isLiked={selectedProduct ? JSON.parse(localStorage.getItem('natura_likes') || '[]').includes(selectedProduct.id) : false}
-        onToggleLike={() => {
-          if (selectedProduct) {
-            const likedItems = JSON.parse(localStorage.getItem('natura_likes') || '[]');
-            const isLiked = likedItems.includes(selectedProduct.id);
-            let newLikes;
-            if (isLiked) {
-              newLikes = likedItems.filter((id: string) => id !== selectedProduct.id);
-            } else {
-              newLikes = [...likedItems, selectedProduct.id];
-            }
-            localStorage.setItem('natura_likes', JSON.stringify(newLikes));
-            // Force re-render of detail view
-            setSelectedProduct({ ...selectedProduct });
-          }
-        }}
-      />
+      {selectedProduct && (
+        <Suspense fallback={null}>
+          <ProductDetail
+            product={selectedProduct}
+            isOpen={!!selectedProduct}
+            onClose={() => setSelectedProduct(null)}
+            onBuy={(product) => {
+              cart.addItem(product, 1);
+              setSelectedProduct(null); // Close the detail view to show cart
+            }}
+            isLiked={selectedProduct ? readBrandLikeIds(brand).includes(selectedProduct.id) : false}
+            onToggleLike={() => {
+              if (selectedProduct) {
+                toggleBrandLikeId(brand, selectedProduct.id);
+                // Force re-render of detail view
+                setSelectedProduct({ ...selectedProduct });
+              }
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Quick Buy Modal (Contact Form) */}
-      <ContactFormModal
-        product={quickBuyProduct}
-        isOpen={!!quickBuyProduct}
-        onClose={() => setQuickBuyProduct(null)}
-      />
+      {quickBuyProduct && (
+        <Suspense fallback={null}>
+          <ContactFormModal
+            product={quickBuyProduct}
+            isOpen={!!quickBuyProduct}
+            onClose={() => setQuickBuyProduct(null)}
+          />
+        </Suspense>
+      )}
 
       <Footer />
     </div>

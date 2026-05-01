@@ -1,55 +1,76 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-type Theme = "light" | "dark";
+export type GenderTheme = "female" | "male" | "unisex";
+type ThemeMode = "light" | "dark";
 
 interface ThemeContextType {
-  theme: Theme;
-  toggleTheme?: () => void;
-  switchable: boolean;
+  theme: GenderTheme;
+  setTheme: (theme: GenderTheme) => void;
+  isDark: boolean;
+  toggleDarkMode: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 interface ThemeProviderProps {
   children: React.ReactNode;
-  defaultTheme?: Theme;
-  switchable?: boolean;
+  defaultTheme?: ThemeMode;
+  defaultGenderTheme?: GenderTheme;
+}
+
+function applyGenderTheme(theme: GenderTheme) {
+  const root = document.documentElement;
+  root.classList.remove("theme-female", "theme-male", "theme-unisex");
+  root.classList.add(`theme-${theme}`);
+}
+
+function applyDarkMode(isDark: boolean) {
+  const root = document.documentElement;
+  root.classList.toggle("dark", isDark);
 }
 
 export function ThemeProvider({
   children,
   defaultTheme = "light",
-  switchable = false,
+  defaultGenderTheme = "female",
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (switchable) {
-      const stored = localStorage.getItem("theme");
-      return (stored as Theme) || defaultTheme;
+  const [theme, setThemeState] = useState<GenderTheme>(() => {
+    if (typeof window === "undefined") return defaultGenderTheme;
+    const storedTheme = localStorage.getItem("natura_theme_preference");
+    return storedTheme === "male" || storedTheme === "unisex" || storedTheme === "female"
+      ? storedTheme
+      : defaultGenderTheme;
+  });
+
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window === "undefined") return defaultTheme === "dark";
+    const storedDarkMode = localStorage.getItem("natura_dark_mode");
+    if (storedDarkMode !== null) {
+      return storedDarkMode === "true";
     }
-    return defaultTheme;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches || defaultTheme === "dark";
   });
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
+    applyGenderTheme(theme);
+    localStorage.setItem("natura_theme_preference", theme);
+  }, [theme]);
 
-    if (switchable) {
-      localStorage.setItem("theme", theme);
-    }
-  }, [theme, switchable]);
+  useEffect(() => {
+    applyDarkMode(isDark);
+    localStorage.setItem("natura_dark_mode", String(isDark));
+  }, [isDark]);
 
-  const toggleTheme = switchable
-    ? () => {
-        setTheme(prev => (prev === "light" ? "dark" : "light"));
-      }
-    : undefined;
+  const setTheme = (nextTheme: GenderTheme) => {
+    setThemeState(nextTheme);
+  };
+
+  const toggleDarkMode = () => {
+    setIsDark(prev => !prev);
+  };
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, switchable }}>
+    <ThemeContext.Provider value={{ theme, setTheme, isDark, toggleDarkMode }}>
       {children}
     </ThemeContext.Provider>
   );
