@@ -1,5 +1,6 @@
 import { client as odooClient, getOdooImageUrl } from './odoo';
 import { GET_PRODUCTS, GET_CATEGORIES } from './odooQueries';
+import { applyLocalCatalogOverrides, readLocalCatalogOverrides } from './adminCatalogStorage';
 
 export interface Category {
     id: string;
@@ -202,10 +203,30 @@ function getFallbackData(brand: 'natura' | 'nikken') {
     return cloneCatalogData(brand === 'nikken' ? NIKKEN_MOCK_DATA : NATURA_MOCK_DATA);
 }
 
+function applyBrandLocalOverrides(data: CatalogData, brand: 'natura' | 'nikken'): CatalogData {
+    if (typeof window === 'undefined') {
+        return data;
+    }
+
+    try {
+        return {
+            categories: data.categories.map(category => ({ ...category })),
+            products: applyLocalCatalogOverrides(data.products, readLocalCatalogOverrides(brand)).map(product => ({
+                ...product,
+                benefits: [...product.benefits],
+                deliveryMethods: [...product.deliveryMethods],
+            })),
+        };
+    } catch (error) {
+        console.error(`Error applying local catalog overrides for ${brand}:`, error);
+        return data;
+    }
+}
+
 export async function fetchCatalogData(brand: 'natura' | 'nikken' = 'natura'): Promise<CatalogData | null> {
     try {
         if (brand === 'nikken') {
-            return getFallbackData('nikken');
+            return applyBrandLocalOverrides(getFallbackData('nikken'), 'nikken');
         }
 
         const [productsRes, categoriesRes] = await Promise.all([
@@ -239,15 +260,15 @@ export async function fetchCatalogData(brand: 'natura' | 'nikken' = 'natura'): P
 
         if (products.length === 0) {
             console.warn('No products found in Odoo, using mock data fallback.');
-            return getFallbackData('natura');
+            return applyBrandLocalOverrides(getFallbackData('natura'), 'natura');
         }
 
-        return {
+        return applyBrandLocalOverrides({
             categories: categories.length > 0 ? categories : cloneCatalogData(NATURA_MOCK_DATA).categories,
             products,
-        };
+        }, 'natura');
     } catch (error) {
         console.error('Error fetching Odoo catalog data, using mock data fallback:', error);
-        return getFallbackData(brand);
+        return applyBrandLocalOverrides(getFallbackData(brand), brand);
     }
 }

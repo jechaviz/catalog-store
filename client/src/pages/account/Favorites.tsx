@@ -1,6 +1,13 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { ArrowRight, Heart, Loader2, ShoppingBag, Sparkles, User as UserIcon } from 'lucide-react';
+import {
+  ArrowRight,
+  Heart,
+  Loader2,
+  ShoppingBag,
+  Sparkles,
+  User as UserIcon,
+} from 'lucide-react';
 import { Navbar } from '@/components/app/layout/Navbar';
 import { Footer } from '@/components/app/layout/Footer';
 import { ProductCard } from '@/components/domain/product/ProductCard';
@@ -11,24 +18,33 @@ import { useBrand } from '@/contexts/BrandContext';
 import { useCart } from '@/hooks/useCart';
 import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import { fetchCatalogData, type CatalogData, type CatalogProduct } from '@/lib/dataFetcher';
-import { isLikesStorageKeyForBrand, readBrandLikeIds, toggleBrandLikeId } from '@/lib/storefrontStorage';
+import {
+  applyLocalCatalogOverrides,
+  isLocalCatalogStorageKeyForBrand,
+  readLocalCatalogOverrides,
+} from '@/lib/adminCatalogStorage';
+import {
+  isLikesStorageKeyForBrand,
+  readBrandLikeIds,
+  toggleBrandLikeId,
+} from '@/lib/storefrontStorage';
 
 const ProductDetail = lazy(() =>
   import('@/components/domain/product/ProductDetail').then((module) => ({
     default: module.ProductDetail,
-  }))
+  })),
 );
 
 const CartDrawer = lazy(() =>
   import('@/components/domain/cart/CartDrawer').then((module) => ({
     default: module.CartDrawer,
-  }))
+  })),
 );
 
 const ContactFormModal = lazy(() =>
   import('@/components/shared/ui/ContactFormModal').then((module) => ({
     default: module.ContactFormModal,
-  }))
+  })),
 );
 
 export default function Favorites() {
@@ -42,6 +58,7 @@ export default function Favorites() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [hasLocalCatalogOverrides, setHasLocalCatalogOverrides] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
   const [quickBuyProduct, setQuickBuyProduct] = useState<CatalogProduct | null>(null);
 
@@ -84,7 +101,18 @@ export default function Favorites() {
   useEffect(() => {
     let isMounted = true;
 
-    async function loadCatalog() {
+    const syncLocalCatalogState = () => {
+      try {
+        const overrides = readLocalCatalogOverrides(brand);
+        setHasLocalCatalogOverrides(
+          overrides.products.length > 0 || overrides.deletedProductIds.length > 0,
+        );
+      } catch {
+        setHasLocalCatalogOverrides(false);
+      }
+    };
+
+    const loadCatalog = async () => {
       try {
         setLoading(true);
         setHasLoadError(false);
@@ -94,8 +122,35 @@ export default function Favorites() {
           return;
         }
 
-        setData(catalogData);
-        setHasLoadError(!catalogData);
+        const overrides = readLocalCatalogOverrides(brand);
+        const nextCatalogData = catalogData
+          ? {
+              ...catalogData,
+              products: applyLocalCatalogOverrides(catalogData.products, overrides),
+            }
+          : null;
+
+        setData(nextCatalogData);
+        setHasLoadError(!nextCatalogData);
+        setHasLocalCatalogOverrides(
+          overrides.products.length > 0 || overrides.deletedProductIds.length > 0,
+        );
+
+        if (!nextCatalogData) {
+          setSelectedProduct(null);
+          setQuickBuyProduct(null);
+          return;
+        }
+
+        const productsById = new Map(
+          nextCatalogData.products.map((product) => [product.id, product]),
+        );
+        setSelectedProduct((currentProduct) =>
+          currentProduct ? productsById.get(currentProduct.id) ?? null : null,
+        );
+        setQuickBuyProduct((currentProduct) =>
+          currentProduct ? productsById.get(currentProduct.id) ?? null : null,
+        );
       } catch (error) {
         console.error('Error loading favorites catalog:', error);
 
@@ -105,18 +160,44 @@ export default function Favorites() {
 
         setData(null);
         setHasLoadError(true);
+        syncLocalCatalogState();
       } finally {
         if (isMounted) {
           setLoading(false);
         }
       }
-    }
+    };
 
     setSelectedProduct(null);
-    loadCatalog();
+
+    const handleLocalProductsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ brand?: string; storageKey?: string }>).detail;
+
+      if (detail?.brand === brand || isLocalCatalogStorageKeyForBrand(detail?.storageKey, brand)) {
+        void loadCatalog();
+      }
+    };
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (isLocalCatalogStorageKeyForBrand(event.key, brand)) {
+        void loadCatalog();
+      }
+    };
+
+    void loadCatalog();
+    window.addEventListener(
+      'catalog-local-products-changed',
+      handleLocalProductsChanged as EventListener,
+    );
+    window.addEventListener('storage', handleStorageChange);
 
     return () => {
       isMounted = false;
+      window.removeEventListener(
+        'catalog-local-products-changed',
+        handleLocalProductsChanged as EventListener,
+      );
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, [brand]);
 
@@ -149,10 +230,10 @@ export default function Favorites() {
         products={[]}
       />
 
-      <main className="flex-1 container max-w-6xl py-12 px-4">
+      <main className="container max-w-6xl flex-1 px-4 py-12">
         <section className="mb-10">
-          <div className="rounded-[2rem] border border-primary/10 bg-white p-6 sm:p-8 shadow-sm">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="rounded-[2rem] border border-primary/10 bg-white p-6 shadow-sm sm:p-8">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div className="max-w-3xl">
                 <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.3em] text-primary">
                   <Heart className="h-3.5 w-3.5" />
@@ -161,21 +242,28 @@ export default function Favorites() {
                 <div className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
                   <UserIcon className="h-4 w-4 text-primary" />
                   <span className="font-semibold text-slate-900">{activeProfileLabel}</span>
-                  <span className="hidden sm:inline text-slate-300">•</span>
+                  <span className="hidden text-slate-300 sm:inline">|</span>
                   <span>Esta lista pertenece al perfil activo.</span>
+                  {hasLocalCatalogOverrides ? (
+                    <>
+                      <span className="hidden text-slate-300 sm:inline">|</span>
+                      <span className="text-primary">Catalogo local activo</span>
+                    </>
+                  ) : null}
                 </div>
-                <h1 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+                <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
                   Tu lista guardada por marca activa
                 </h1>
-                <p className="mt-3 text-slate-500 text-base sm:text-lg leading-relaxed">
+                <p className="mt-3 text-base leading-relaxed text-slate-500 sm:text-lg">
                   {heroCopy}
                 </p>
                 <p className="mt-4 text-sm font-medium text-slate-600">
-                  Toca el corazon en cualquier tarjeta para quitar productos de esta lista y usa el carrito para cerrar tu compra mas rapido.
+                  Toca el corazon en cualquier tarjeta para quitar productos de esta lista y usa el
+                  carrito para cerrar tu compra mas rapido.
                 </p>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 lg:justify-end">
+              <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
                 <Button
                   variant="outline"
                   className="rounded-xl border-slate-200 text-slate-700"
@@ -196,22 +284,27 @@ export default function Favorites() {
         </section>
 
         {loading ? (
-          <div className="min-h-[40vh] flex flex-col items-center justify-center text-center">
-            <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+          <div className="flex min-h-[40vh] flex-col items-center justify-center text-center">
+            <Loader2 className="mb-4 h-10 w-10 animate-spin text-primary" />
             <h2 className="text-xl font-bold text-slate-900">Cargando tus favoritos...</h2>
-            <p className="mt-2 text-slate-500">Estamos consultando el catalogo activo de {brandLabel}.</p>
+            <p className="mt-2 text-slate-500">
+              Estamos consultando el catalogo activo de {brandLabel}.
+            </p>
           </div>
         ) : hasLoadError || !data ? (
-          <Card className="border-none shadow-sm overflow-hidden">
-            <CardContent className="p-10 sm:p-12 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-6">
+          <Card className="overflow-hidden border-none shadow-sm">
+            <CardContent className="p-10 text-center sm:p-12">
+              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
                 <Heart className="h-7 w-7" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">No pudimos cargar tus favoritos</h2>
-              <p className="text-slate-500 mt-3 max-w-2xl mx-auto leading-relaxed">
-                Ocurrio un problema al leer el catalogo de {brandLabel}. Puedes volver al inicio e intentarlo de nuevo sin perder tu lista guardada.
+              <h2 className="text-2xl font-bold text-slate-900">
+                No pudimos cargar tus favoritos
+              </h2>
+              <p className="mx-auto mt-3 max-w-2xl leading-relaxed text-slate-500">
+                Ocurrio un problema al leer el catalogo de {brandLabel}. Puedes volver al inicio e
+                intentarlo de nuevo sin perder tu lista guardada.
               </p>
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <Link href={homePath}>
                   <Button className="rounded-xl px-6">Volver al catalogo</Button>
                 </Link>
@@ -227,16 +320,19 @@ export default function Favorites() {
             </CardContent>
           </Card>
         ) : favoriteIds.length === 0 ? (
-          <Card className="border-none shadow-sm overflow-hidden">
-            <CardContent className="p-10 sm:p-12 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-6">
+          <Card className="overflow-hidden border-none shadow-sm">
+            <CardContent className="p-10 text-center sm:p-12">
+              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <Heart className="h-7 w-7 fill-current" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">Aun no tienes favoritos de {brandLabel}</h2>
-              <p className="text-slate-500 mt-3 max-w-2xl mx-auto leading-relaxed">
-                Cuando marques productos con el corazon en el catalogo de {brandLabel}, apareceran aqui para que los compares, los agregues al carrito o los retomes despues.
+              <h2 className="text-2xl font-bold text-slate-900">
+                Aun no tienes favoritos de {brandLabel}
+              </h2>
+              <p className="mx-auto mt-3 max-w-2xl leading-relaxed text-slate-500">
+                Cuando marques productos con el corazon en el catalogo de {brandLabel}, apareceran
+                aqui para que los compares, los agregues al carrito o los retomes despues.
               </p>
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <Link href={homePath}>
                   <Button className="rounded-xl px-6">Descubrir productos</Button>
                 </Link>
@@ -252,16 +348,21 @@ export default function Favorites() {
             </CardContent>
           </Card>
         ) : favoriteProducts.length === 0 ? (
-          <Card className="border-none shadow-sm overflow-hidden">
-            <CardContent className="p-10 sm:p-12 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-6">
+          <Card className="overflow-hidden border-none shadow-sm">
+            <CardContent className="p-10 text-center sm:p-12">
+              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
                 <Sparkles className="h-7 w-7" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">Tus favoritos ya no estan disponibles</h2>
-              <p className="text-slate-500 mt-3 max-w-2xl mx-auto leading-relaxed">
-                Tu lista guardada tiene {favoriteIds.length} referencia{favoriteIds.length === 1 ? '' : 's'}, pero ningun producto coincide con el catalogo activo de {brandLabel}. Explora la tienda para guardar nuevos favoritos vigentes.
+              <h2 className="text-2xl font-bold text-slate-900">
+                Tus favoritos ya no estan disponibles
+              </h2>
+              <p className="mx-auto mt-3 max-w-2xl leading-relaxed text-slate-500">
+                Tu lista guardada tiene {favoriteIds.length} referencia
+                {favoriteIds.length === 1 ? '' : 's'}, pero ningun producto coincide con el
+                catalogo activo de {brandLabel}. Explora la tienda para guardar nuevos favoritos
+                vigentes.
               </p>
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <Link href={homePath}>
                   <Button className="rounded-xl px-6">Explorar catalogo actual</Button>
                 </Link>
@@ -278,26 +379,36 @@ export default function Favorites() {
           </Card>
         ) : (
           <>
-            <section className="mb-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <section className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-slate-900">
-                  {favoriteProducts.length} favorito{favoriteProducts.length === 1 ? '' : 's'} listo{favoriteProducts.length === 1 ? '' : 's'} para comprar
+                  {favoriteProducts.length} favorito{favoriteProducts.length === 1 ? '' : 's'} listo
+                  {favoriteProducts.length === 1 ? '' : 's'} para comprar
                 </h2>
                 <p className="mt-2 text-slate-500">
-                  Vista filtrada por la marca activa. Puedes abrir el detalle, quitar productos o agregarlos directo al carrito.
+                  Vista filtrada por la marca activa. Puedes abrir el detalle, quitar productos o
+                  agregarlos directo al carrito.
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  Mostrando lo guardado por <span className="font-semibold text-slate-700">{activeProfileLabel}</span>.
+                  Mostrando lo guardado por{' '}
+                  <span className="font-semibold text-slate-700">{activeProfileLabel}</span>.
                 </p>
+                {hasLocalCatalogOverrides ? (
+                  <p className="mt-1 text-sm text-primary/80">
+                    Esta vista incluye productos personalizados o cambios locales del catalogo.
+                  </p>
+                ) : null}
               </div>
               {missingFavoritesCount > 0 ? (
                 <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  {missingFavoritesCount} favorito{missingFavoritesCount === 1 ? '' : 's'} no aparece{missingFavoritesCount === 1 ? '' : 'n'} en el catalogo actual de {brandLabel}.
+                  {missingFavoritesCount} favorito{missingFavoritesCount === 1 ? '' : 's'} no
+                  aparece{missingFavoritesCount === 1 ? '' : 'n'} en el catalogo actual de{' '}
+                  {brandLabel}.
                 </div>
               ) : null}
             </section>
 
-            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
+            <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:gap-8 lg:grid-cols-3 xl:grid-cols-4">
               {favoriteProducts.map((product) => (
                 <ProductCard
                   key={product.id}

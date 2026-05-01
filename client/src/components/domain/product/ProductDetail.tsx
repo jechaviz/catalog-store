@@ -8,6 +8,7 @@ import { useBrand } from '@/contexts/BrandContext';
 import { SocialSharePanel } from '@/components/shared/ui/SocialSharePanel';
 import { ExportableProduct } from '@/components/domain/product/ExportableProduct';
 import { getProductFallbackImage } from '@/lib/storefrontStorage';
+import { isCustomCatalogProductId } from '@/lib/adminCatalogStorage';
 
 interface ProductDetailProps {
     product: CatalogProduct | null;
@@ -38,6 +39,8 @@ export function ProductDetail({
     const analogousColor2 = getAnalogousColor(primaryColor, -35);
 
     if (!product) return null;
+
+    const isLocalProduct = isCustomCatalogProductId(product.id);
 
     const handleDirectCheckout = () => {
         onBuy(product);
@@ -173,6 +176,11 @@ export function ProductDetail({
                                 {/* Left side - Content */}
                                 <div className="flex flex-col justify-center order-2 lg:order-1 min-w-0 pb-20 lg:pb-0">
                                     <div className="mb-6 lg:mb-8">
+                                        {isLocalProduct && (
+                                            <span className="inline-flex mb-4 rounded-full bg-slate-900 px-4 py-1.5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg">
+                                                Producto local
+                                            </span>
+                                        )}
                                         <h1 className="display text-4xl sm:text-5xl md:text-6xl font-black mb-3 leading-tight animate-fade-in break-words tracking-tight drop-shadow-sm" style={{ color: darkColor }}>
                                             {product.name}
                                         </h1>

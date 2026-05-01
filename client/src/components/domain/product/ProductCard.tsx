@@ -10,6 +10,7 @@ import {
     readBrandLikeIds,
     toggleBrandLikeId,
 } from '@/lib/storefrontStorage';
+import { isCustomCatalogProductId } from '@/lib/adminCatalogStorage';
 
 interface ProductCardProps {
     product: CatalogProduct;
@@ -22,6 +23,7 @@ export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: 
     const [isLiked, setIsLiked] = useState(false);
     const { user } = useAuth();
     const { brand } = useBrand();
+    const isLocalProduct = isCustomCatalogProductId(product.id);
 
     useEffect(() => {
         const syncLikedState = () => {
@@ -60,6 +62,11 @@ export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: 
                 </div>
                 {/* Brand Tag (Top Right - below Like) */}
                 <div className="absolute top-14 right-4 z-10 flex flex-col gap-1 items-end">
+                    {isLocalProduct && (
+                        <span className="text-[9px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-md bg-slate-900 text-white shadow-sm">
+                            Local
+                        </span>
+                    )}
                     {product.subBrand && (
                         <span className="text-[9px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-md bg-primary text-white shadow-sm">
                             {product.subBrand}

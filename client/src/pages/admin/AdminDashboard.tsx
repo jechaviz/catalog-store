@@ -21,6 +21,12 @@ import {
   listOrderStorageKeysForBrand,
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
+import {
+  getLocalCatalogChangesCount,
+  isCustomCatalogProductId,
+  isLocalCatalogStorageKeyForBrand,
+  readLocalCatalogOverrides,
+} from '@/lib/adminCatalogStorage';
 
 const currencyFormatter = new Intl.NumberFormat('es-MX', {
   style: 'currency',
@@ -46,6 +52,13 @@ type DashboardActivity = {
   bg: string;
   title: string;
   time: string;
+};
+
+type LocalCatalogStatus = {
+  changesCount: number;
+  customProductsCount: number;
+  editedProductsCount: number;
+  deletedProductsCount: number;
 };
 
 function formatCurrency(value: number) {
@@ -196,6 +209,12 @@ export default function AdminDashboard() {
   const { brand } = useBrand();
   const [orders, setOrders] = useState<StoredOrderRecord[]>([]);
   const [orderScopeCount, setOrderScopeCount] = useState(0);
+  const [localCatalogStatus, setLocalCatalogStatus] = useState<LocalCatalogStatus>({
+    changesCount: 0,
+    customProductsCount: 0,
+    editedProductsCount: 0,
+    deletedProductsCount: 0,
+  });
 
   useEffect(() => {
     const syncOrders = () => {
@@ -238,7 +257,58 @@ export default function AdminDashboard() {
     };
   }, [brand]);
 
+  useEffect(() => {
+    const syncLocalCatalogStatus = () => {
+      const overrides = readLocalCatalogOverrides(brand);
+      const customProductsCount = overrides.products.filter(product =>
+        isCustomCatalogProductId(product.id),
+      ).length;
+      const editedProductsCount = overrides.products.length - customProductsCount;
+
+      setLocalCatalogStatus({
+        changesCount: getLocalCatalogChangesCount(brand),
+        customProductsCount,
+        editedProductsCount,
+        deletedProductsCount: overrides.deletedProductIds.length,
+      });
+    };
+
+    const handleLocalCatalogChanged = (event: Event) => {
+      const { detail } = event as CustomEvent<{ brand?: string; storageKey?: string }>;
+
+      if (
+        !detail?.brand ||
+        detail.brand === brand ||
+        isLocalCatalogStorageKeyForBrand(detail.storageKey, brand)
+      ) {
+        syncLocalCatalogStatus();
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key || isLocalCatalogStorageKeyForBrand(event.key, brand)) {
+        syncLocalCatalogStatus();
+      }
+    };
+
+    syncLocalCatalogStatus();
+    window.addEventListener(
+      'catalog-local-products-changed',
+      handleLocalCatalogChanged as EventListener,
+    );
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener(
+        'catalog-local-products-changed',
+        handleLocalCatalogChanged as EventListener,
+      );
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [brand]);
+
   const currentDateLabel = formatHeaderDate(new Date());
+  const hasLocalCatalogChanges = localCatalogStatus.changesCount > 0;
 
   const {
     monthlyRevenue,
@@ -329,6 +399,57 @@ export default function AdminDashboard() {
             color="rose-500"
           />
         </div>
+
+        <Card className="border-none shadow-sm">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="text-lg font-bold">Catalogo local de {brandLabel(brand)}</CardTitle>
+              <p className="mt-1 text-sm text-slate-500">
+                {hasLocalCatalogChanges
+                  ? `${localCatalogStatus.changesCount} cambios locales activos listos para reflejarse en el catalogo.`
+                  : 'Sin customizaciones locales activas en este momento.'}
+              </p>
+            </div>
+            <span
+              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                hasLocalCatalogChanges
+                  ? 'bg-amber-50 text-amber-700'
+                  : 'bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              {hasLocalCatalogChanges ? 'Con cambios locales' : 'Catalogo limpio'}
+            </span>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-sm font-medium text-slate-500">Cambios activos</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">{localCatalogStatus.changesCount}</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Suma de altas, ediciones y eliminaciones locales.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                <p className="text-sm font-medium text-slate-500">Productos locales</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">
+                  {localCatalogStatus.customProductsCount}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {localCatalogStatus.editedProductsCount} editados sobre el catalogo base.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                <p className="text-sm font-medium text-slate-500">Ocultos localmente</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">
+                  {localCatalogStatus.deletedProductsCount}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Productos removidos solo en este dispositivo o sesion.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <Card className="lg:col-span-2 border-none shadow-sm">

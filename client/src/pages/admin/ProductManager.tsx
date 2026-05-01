@@ -62,6 +62,14 @@ import {
 } from '@/components/shared/ui/select';
 import { Badge } from '@/components/shared/ui/badge';
 import { getProductFallbackImage } from '@/lib/storefrontStorage';
+import {
+  applyLocalCatalogOverrides,
+  clearLocalCatalogOverrides,
+  deleteLocalCatalogProduct,
+  isLocalCatalogStorageKeyForBrand,
+  readLocalCatalogOverrides,
+  upsertLocalCatalogProduct,
+} from '@/lib/adminCatalogStorage';
 
 type StockFilter = 'all' | 'in-stock' | 'out-of-stock';
 
@@ -80,9 +88,11 @@ function brandLabel(brand: string) {
 
 export default function ProductManager() {
   const { brand } = useBrand();
+  const [baseProducts, setBaseProducts] = useState<CatalogProduct[]>([]);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLocalChanges, setHasLocalChanges] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -90,6 +100,7 @@ export default function ProductManager() {
   const [editedPrice, setEditedPrice] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CatalogProduct | null>(null);
+  const [clearLocalChangesOpen, setClearLocalChangesOpen] = useState(false);
   const [draft, setDraft] = useState<DraftProduct>({
     name: '',
     subBrand: '',
@@ -105,8 +116,13 @@ export default function ProductManager() {
       try {
         const data = await fetchCatalogData(brand);
         if (data) {
-          setProducts(data.products);
+          const localOverrides = readLocalCatalogOverrides(brand);
+          setBaseProducts(data.products);
+          setProducts(applyLocalCatalogOverrides(data.products, localOverrides));
           setCategories(data.categories);
+          setHasLocalChanges(
+            localOverrides.products.length > 0 || localOverrides.deletedProductIds.length > 0
+          );
           const defaultCategory = data.categories[0]?.id || 'uncategorized';
           setDraft({
             name: '',
@@ -126,6 +142,40 @@ export default function ProductManager() {
     }
     load();
   }, [brand]);
+
+  useEffect(() => {
+    const syncLocalOverrides = () => {
+      const overrides = readLocalCatalogOverrides(brand);
+      setHasLocalChanges(
+        overrides.products.length > 0 || overrides.deletedProductIds.length > 0
+      );
+      setProducts(applyLocalCatalogOverrides(baseProducts, overrides));
+    };
+
+    const handleStorageEvent = (event: StorageEvent) => {
+      if (isLocalCatalogStorageKeyForBrand(event.key, brand)) {
+        syncLocalOverrides();
+      }
+    };
+
+    const handleLocalCatalogEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{ brand?: string; storageKey?: string }>;
+      if (
+        customEvent.detail?.brand === brand ||
+        isLocalCatalogStorageKeyForBrand(customEvent.detail?.storageKey, brand)
+      ) {
+        syncLocalOverrides();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageEvent);
+    window.addEventListener('catalog-local-products-changed', handleLocalCatalogEvent);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageEvent);
+      window.removeEventListener('catalog-local-products-changed', handleLocalCatalogEvent);
+    };
+  }, [brand, baseProducts]);
 
   const categoryMap = useMemo(
     () => new Map(categories.map(category => [category.id, category.name])),
@@ -181,6 +231,8 @@ export default function ProductManager() {
     };
 
     setProducts(prev => [newProduct, ...prev]);
+    upsertLocalCatalogProduct(brand, newProduct);
+    setHasLocalChanges(true);
     setCreateOpen(false);
     setDraft({
       name: '',
@@ -190,7 +242,7 @@ export default function ProductManager() {
       description: '',
       inStock: true,
     });
-    toast.success('Producto agregado en esta sesion.');
+    toast.success(`Producto guardado localmente para ${brandLabel(brand)}.`);
   };
 
   const startEditing = (product: CatalogProduct) => {
@@ -210,9 +262,14 @@ export default function ProductManager() {
         product.id === productId ? { ...product, price: parsedPrice } : product
       )
     );
+    const updatedProduct = products.find(product => product.id === productId);
+    if (updatedProduct) {
+      upsertLocalCatalogProduct(brand, { ...updatedProduct, price: parsedPrice });
+      setHasLocalChanges(true);
+    }
     setEditingId(null);
     setEditedPrice('');
-    toast.success('Precio actualizado localmente.');
+    toast.success(`Precio actualizado y persistido para ${brandLabel(brand)}.`);
   };
 
   const duplicateProduct = (product: CatalogProduct) => {
@@ -222,28 +279,57 @@ export default function ProductManager() {
       name: `${product.name} Copia`,
     };
     setProducts(prev => [copy, ...prev]);
-    toast.success('Producto duplicado en esta sesion.');
+    upsertLocalCatalogProduct(brand, copy);
+    setHasLocalChanges(true);
+    toast.success(`Producto duplicado y guardado localmente para ${brandLabel(brand)}.`);
   };
 
   const toggleStock = (productId: string) => {
-    setProducts(prev =>
-      prev.map(product =>
-        product.id === productId
-          ? { ...product, inStock: !product.inStock }
-          : product
-      )
-    );
     const target = products.find(product => product.id === productId);
+    if (!target) return;
+
+    const nextProduct = { ...target, inStock: !target.inStock };
+    setProducts(prev =>
+      prev.map(product => (product.id === productId ? nextProduct : product))
+    );
+    upsertLocalCatalogProduct(brand, nextProduct);
+    setHasLocalChanges(true);
     toast.success(
-      target?.inStock ? 'Producto marcado como agotado.' : 'Producto marcado como disponible.'
+      target.inStock ? 'Producto marcado como agotado.' : 'Producto marcado como disponible.'
     );
   };
 
   const deleteProduct = () => {
     if (!deleteTarget) return;
     setProducts(prev => prev.filter(product => product.id !== deleteTarget.id));
-    toast.success('Producto eliminado de esta sesion.');
+    deleteLocalCatalogProduct(brand, deleteTarget.id);
+    setHasLocalChanges(true);
+    toast.success(`Producto eliminado del catalogo local de ${brandLabel(brand)}.`);
     setDeleteTarget(null);
+  };
+
+  const resetLocalChanges = async () => {
+    setLoading(true);
+    try {
+      clearLocalCatalogOverrides(brand);
+      const data = await fetchCatalogData(brand);
+      if (data) {
+        setBaseProducts(data.products);
+        setProducts(data.products);
+        setCategories(data.categories);
+        setDraft(prev => ({
+          ...prev,
+          categoryId: data.categories[0]?.id || prev.categoryId || 'uncategorized',
+        }));
+      }
+      setHasLocalChanges(false);
+      setEditingId(null);
+      setEditedPrice('');
+      setClearLocalChangesOpen(false);
+      toast.success(`Cambios locales de ${brandLabel(brand)} limpiados.`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const clearFilters = () => {
@@ -258,12 +344,25 @@ export default function ProductManager() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Gestion de Productos</h1>
-            <p className="text-slate-500">Administra el catalogo de {brand}, actualiza precios y existencias.</p>
+            <p className="text-slate-500">
+              Administra el catalogo de {brand} con cambios persistentes en este navegador para cada marca.
+            </p>
           </div>
-          <Button className="rounded-xl flex items-center gap-2" onClick={openCreateDialog}>
-            <Plus size={18} />
-            Nuevo Producto
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            {hasLocalChanges && (
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => setClearLocalChangesOpen(true)}
+              >
+                Limpiar cambios locales
+              </Button>
+            )}
+            <Button className="rounded-xl flex items-center gap-2" onClick={openCreateDialog}>
+              <Plus size={18} />
+              Nuevo Producto
+            </Button>
+          </div>
         </div>
 
         <Card className="border-none shadow-sm overflow-hidden">
@@ -349,6 +448,11 @@ export default function ProductManager() {
                 <Badge variant="outline" className="rounded-full border-slate-200 px-3 py-1 text-slate-500">
                   {exportProducts.length} de {products.length} productos visibles
                 </Badge>
+                {hasLocalChanges && (
+                  <Badge variant="outline" className="rounded-full border-amber-200 px-3 py-1 text-amber-700">
+                    Cambios locales persistentes para {brandLabel(brand)}
+                  </Badge>
+                )}
                 {stockFilter !== 'all' && (
                   <Badge variant="secondary" className="rounded-full px-3 py-1">
                     {stockFilter === 'in-stock' ? 'Disponibles' : 'Agotados'}
@@ -487,7 +591,7 @@ export default function ProductManager() {
           <DialogHeader className="px-6 pt-6">
             <DialogTitle>Nuevo producto local</DialogTitle>
             <DialogDescription>
-              Este alta vive en la sesion actual y sirve para probar cambios de catalogo sin tocar Odoo.
+              Este alta queda guardada localmente en este navegador para {brandLabel(brand)} y no toca Odoo.
             </DialogDescription>
           </DialogHeader>
 
@@ -549,13 +653,35 @@ export default function ProductManager() {
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar producto</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget ? `Quitaremos "${deleteTarget.name}" de esta sesion local del admin.` : 'Confirma la eliminacion.'}
+              {deleteTarget
+                ? `Quitaremos "${deleteTarget.name}" del catalogo local persistente de ${brandLabel(brand)}.`
+                : 'Confirma la eliminacion.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
             <AlertDialogAction className="rounded-xl bg-rose-600 hover:bg-rose-700" onClick={deleteProduct}>
               Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={clearLocalChangesOpen} onOpenChange={setClearLocalChangesOpen}>
+        <AlertDialogContent className="rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Limpiar cambios locales</AlertDialogTitle>
+            <AlertDialogDescription>
+              Restableceremos el catalogo visible de {brandLabel(brand)} al estado base y borraremos las ediciones locales guardadas en este navegador.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-xl"
+              onClick={resetLocalChanges}
+            >
+              Limpiar cambios
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
