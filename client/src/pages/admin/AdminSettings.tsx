@@ -68,6 +68,11 @@ export default function AdminSettings() {
     const slogan = formValues.slogan.trim();
     const sellerMessageTemplate = formValues.sellerMessageTemplate.trim();
     const sellerPhone = normalizeSellerPhone(formValues.sellerPhone);
+    const connectiaPaymentLink = formValues.connectiaPaymentLink.trim();
+    const paypalPaymentLink = formValues.paypalPaymentLink.trim();
+    const paypalUsername = formValues.paypalUsername.trim().replace(/^@+/, '');
+    const transferClabe = formValues.transferClabe.trim();
+    const transferInstructions = formValues.transferInstructions.trim();
 
     if (!siteName || !slogan || !sellerMessageTemplate) {
       toast.error('Completa el nombre del sitio, el slogan y el mensaje base del vendedor.');
@@ -81,6 +86,11 @@ export default function AdminSettings() {
         slogan,
         sellerPhone,
         sellerMessageTemplate,
+        connectiaPaymentLink,
+        paypalPaymentLink,
+        paypalUsername,
+        transferClabe,
+        transferInstructions,
       });
 
       setFormValues(savedSettings);
@@ -195,7 +205,7 @@ export default function AdminSettings() {
                 <CardHeader>
                   <CardTitle className="text-lg">Configuracion de ventas</CardTitle>
                   <CardDescription>
-                    Parametros para pedidos y contacto por WhatsApp.
+                    Parametros para pedidos, contacto por WhatsApp y medios de pago.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -224,6 +234,73 @@ export default function AdminSettings() {
                     <p className="text-[10px] text-slate-400">
                       Este texto base se puede reutilizar en compra rapida y solicitudes por WhatsApp.
                     </p>
+                  </div>
+                  <div className="pt-4 border-t border-slate-100">
+                    <p className="text-sm font-bold text-slate-800 mb-4">Datos de pago</p>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Link de Connectia
+                        </label>
+                        <Input
+                          value={formValues.connectiaPaymentLink}
+                          onChange={(event) => updateField('connectiaPaymentLink', event.target.value)}
+                          className="rounded-xl border-slate-200"
+                          placeholder="https://connectia.mx/..."
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            Usuario de PayPal
+                          </label>
+                          <Input
+                            value={formValues.paypalUsername}
+                            onChange={(event) => updateField('paypalUsername', event.target.value)}
+                            className="rounded-xl border-slate-200"
+                            placeholder="tuusuario"
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            Puedes escribirlo con o sin `@`.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            Link de PayPal
+                          </label>
+                          <Input
+                            value={formValues.paypalPaymentLink}
+                            onChange={(event) => updateField('paypalPaymentLink', event.target.value)}
+                            className="rounded-xl border-slate-200"
+                            placeholder="https://paypal.me/tuusuario"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          CLABE o referencia de transferencia
+                        </label>
+                        <Input
+                          value={formValues.transferClabe}
+                          onChange={(event) => updateField('transferClabe', event.target.value)}
+                          className="rounded-xl border-slate-200"
+                          placeholder="012345678901234567 (Banco)"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Instrucciones de transferencia
+                        </label>
+                        <Textarea
+                          value={formValues.transferInstructions}
+                          onChange={(event) => updateField('transferInstructions', event.target.value)}
+                          className="rounded-xl border-slate-200 min-h-[96px]"
+                        />
+                        <p className="text-[10px] text-slate-400">
+                          Aqui puedes indicar banco, titular o el flujo para enviar comprobante.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -288,6 +365,24 @@ export default function AdminSettings() {
                     <span className="font-semibold text-slate-900">
                       {normalizeSellerPhone(formValues.sellerPhone)}
                     </span>
+                  </div>
+                  <div className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 space-y-2">
+                    <p>
+                      Connectia:{' '}
+                      <span className="font-semibold text-slate-900">
+                        {formValues.connectiaPaymentLink}
+                      </span>
+                    </p>
+                    <p>
+                      PayPal:{' '}
+                      <span className="font-semibold text-slate-900">
+                        {formValues.paypalUsername ? `@${formValues.paypalUsername}` : formValues.paypalPaymentLink}
+                      </span>
+                    </p>
+                    <p>
+                      Transferencia:{' '}
+                      <span className="font-semibold text-slate-900">{formValues.transferClabe}</span>
+                    </p>
                   </div>
                 </div>
               </CardContent>

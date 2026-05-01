@@ -21,6 +21,57 @@ import {
 
 type PaymentMethod = 'whatsapp_cash' | 'transfer' | 'connectia' | 'paypal';
 
+type CheckoutPaymentOption = {
+    description: string;
+    enabled: boolean;
+    feedback?: string;
+    link?: string;
+    instructions?: string;
+};
+
+type CheckoutPaymentOptions = Record<PaymentMethod, CheckoutPaymentOption>;
+
+const PLACEHOLDER_PATTERNS = [
+    'tu-tienda',
+    'tuusuario',
+    'example',
+    'demo',
+    'placeholder',
+    '12345678901234567',
+    '012345678901234567',
+];
+
+function getStringValue(source: Record<string, unknown>, keys: string[]) {
+    for (const key of keys) {
+        const value = source[key];
+        if (typeof value === 'string' && value.trim()) {
+            return value.trim();
+        }
+    }
+
+    return '';
+}
+
+function getNestedRecord(source: Record<string, unknown>, keys: string[]) {
+    for (const key of keys) {
+        const value = source[key];
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            return value as Record<string, unknown>;
+        }
+    }
+
+    return null;
+}
+
+function isConfiguredValue(value: string) {
+    if (!value.trim()) {
+        return false;
+    }
+
+    const normalizedValue = value.trim().toLowerCase();
+    return !PLACEHOLDER_PATTERNS.some(pattern => normalizedValue.includes(pattern));
+}
+
 export default function Checkout() {
     const { items, subtotal, clearCart } = useCart();
     const [, setLocation] = useLocation();
@@ -75,10 +126,108 @@ export default function Checkout() {
     const sellerPhone = storefrontSettings.sellerPhone || CONFIG.SELLER.PHONE;
     const sellerMessageTemplate =
         storefrontSettings.sellerMessageTemplate?.trim() || 'Hola, me interesa realizar el siguiente pedido:';
+    const storefrontSettingsRecord = storefrontSettings as unknown as Record<string, unknown>;
+    const paymentSettingsRecord =
+        getNestedRecord(storefrontSettingsRecord, ['paymentSettings', 'payments', 'checkoutPayments']) || {};
+    const productPaymentLink = items.find(item => item.product.paymentLink)?.product.paymentLink?.trim() || '';
+    const transferClabe =
+        getStringValue(paymentSettingsRecord, [
+            'bankTransferClabe',
+            'transferClabe',
+            'clabe',
+        ]) ||
+        getStringValue(storefrontSettingsRecord, [
+            'sellerClabe',
+            'bankTransferClabe',
+            'transferClabe',
+            'clabe',
+        ]) ||
+        CONFIG.SELLER.CLABE;
+    const transferInstructions =
+        getStringValue(paymentSettingsRecord, [
+            'bankTransferInstructions',
+            'transferInstructions',
+        ]) ||
+        getStringValue(storefrontSettingsRecord, [
+            'bankTransferInstructions',
+            'transferInstructions',
+        ]);
+    const connectiaLink =
+        getStringValue(paymentSettingsRecord, [
+            'connectiaLink',
+            'connectiaPaymentLink',
+            'cardPaymentLink',
+            'paymentLink',
+        ]) ||
+        getStringValue(storefrontSettingsRecord, [
+            'connectiaLink',
+            'connectiaPaymentLink',
+            'cardPaymentLink',
+        ]) ||
+        productPaymentLink;
+    const paypalLink =
+        getStringValue(paymentSettingsRecord, [
+            'paypalLink',
+            'paypalMeLink',
+        ]) ||
+        getStringValue(storefrontSettingsRecord, [
+            'paypalLink',
+            'paypalMeLink',
+        ]);
+    const paymentOptions: CheckoutPaymentOptions = {
+        whatsapp_cash: {
+            enabled: true,
+            description: 'Acuerda entrega fisica (Efectivo/Terminal)',
+        },
+        transfer: isConfiguredValue(transferClabe)
+            ? {
+                enabled: true,
+                description: 'Envia comprobante por WhatsApp',
+                instructions:
+                    transferInstructions ||
+                    `Transfiere $${total.toFixed(2)} a la CLABE ${transferClabe} y envia tu comprobante por WhatsApp.`,
+            }
+            : {
+                enabled: false,
+                description: 'Envia comprobante por WhatsApp',
+                feedback: 'No hay CLABE configurada para esta marca.',
+            },
+        connectia: isConfiguredValue(connectiaLink)
+            ? {
+                enabled: true,
+                description: 'Pago seguro en linea',
+                link: connectiaLink,
+            }
+            : {
+                enabled: false,
+                description: 'Pago seguro en linea',
+                feedback: 'No hay liga de pago en linea configurada.',
+            },
+        paypal: isConfiguredValue(paypalLink)
+            ? {
+                enabled: true,
+                description: 'Paga con tu cuenta PayPal',
+                link: paypalLink,
+            }
+            : {
+                enabled: false,
+                description: 'Paga con tu cuenta PayPal',
+                feedback: 'PayPal no esta configurado para esta marca.',
+            },
+    };
+    const availablePaymentMethod =
+        (Object.keys(paymentOptions) as PaymentMethod[]).find(method => paymentOptions[method].enabled) ||
+        'whatsapp_cash';
     const activeProfileLabel = user?.name?.trim() || user?.email?.trim() || null;
     const activeProfileNote = user
         ? `Perfil activo: ${activeProfileLabel}${user.email ? ` <${user.email}>` : ''}${user.id ? ` [${user.id}]` : ''}`
         : undefined;
+
+    useEffect(() => {
+        if (!paymentOptions[paymentMethod].enabled) {
+            setPaymentMethod(availablePaymentMethod);
+        }
+    }, [availablePaymentMethod, paymentMethod, paymentOptions]);
 
     const generateOrderDetails = () => {
         let orderText = `${sellerMessageTemplate}\n\n`;
@@ -106,6 +255,13 @@ export default function Checkout() {
     const handleCheckout = async () => {
         if (!customerName.trim() || !customerPhone.trim() || !customerAddress.trim()) {
             toast.error('Completa tu nombre, telefono y direccion de entrega.');
+            return;
+        }
+
+        const selectedPaymentOption = paymentOptions[paymentMethod];
+
+        if (!selectedPaymentOption.enabled) {
+            toast.error(selectedPaymentOption.feedback || 'Este metodo de pago no esta disponible.');
             return;
         }
 
@@ -140,17 +296,14 @@ export default function Checkout() {
                 openWhatsApp(finalMessage);
             } else if (paymentMethod === 'transfer') {
                 toast('Transferencia bancaria', {
-                    description: `Transfiere $${total.toFixed(2)} a la CLABE ${CONFIG.SELLER.CLABE} y envia tu comprobante por WhatsApp.`,
+                    description: selectedPaymentOption.instructions,
                 });
                 finalMessage = `${baseOrder}*Metodo de Pago:* Transferencia bancaria.\n\nOrden Odoo: ${orderName}\nAdjunto mi comprobante de pago para proceder con el envio.`;
                 openWhatsApp(finalMessage);
             } else if (paymentMethod === 'connectia') {
-                const directLink =
-                    items.find(item => item.product.paymentLink)?.product.paymentLink ||
-                    'https://connectia.mx/tu-tienda';
-                window.open(directLink, '_blank');
+                window.open(selectedPaymentOption.link, '_blank');
             } else if (paymentMethod === 'paypal') {
-                window.open(`https://paypal.me/tuusuario/${total}`, '_blank');
+                window.open(selectedPaymentOption.link, '_blank');
             }
 
             upsertOrder({
@@ -284,45 +437,56 @@ export default function Checkout() {
                                     <Banknote className={`w-8 h-8 ${paymentMethod === 'whatsapp_cash' ? 'text-primary' : 'text-muted-foreground'}`} />
                                     <div>
                                         <p className="font-bold heading text-sm">Pago a la entrega</p>
-                                        <p className="text-xs text-muted-foreground mt-1">Acuerda entrega fisica (Efectivo/Terminal)</p>
+                                        <p className="text-xs text-muted-foreground mt-1">{paymentOptions.whatsapp_cash.description}</p>
                                     </div>
                                 </div>
 
                                 <div
-                                    onClick={() => setPaymentMethod('transfer')}
-                                    className={`cursor-pointer rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentMethod === 'transfer' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
+                                    onClick={() => paymentOptions.transfer.enabled && setPaymentMethod('transfer')}
+                                    className={`rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentOptions.transfer.enabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} ${paymentMethod === 'transfer' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
                                 >
                                     <Building2 className={`w-8 h-8 ${paymentMethod === 'transfer' ? 'text-primary' : 'text-muted-foreground'}`} />
                                     <div>
                                         <p className="font-bold heading text-sm">Transferencia</p>
-                                        <p className="text-xs text-muted-foreground mt-1">Envia comprobante por WhatsApp</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {paymentOptions.transfer.feedback || paymentOptions.transfer.description}
+                                        </p>
                                     </div>
                                 </div>
 
                                 <div
-                                    onClick={() => setPaymentMethod('connectia')}
-                                    className={`cursor-pointer rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentMethod === 'connectia' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
+                                    onClick={() => paymentOptions.connectia.enabled && setPaymentMethod('connectia')}
+                                    className={`rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentOptions.connectia.enabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} ${paymentMethod === 'connectia' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
                                 >
                                     <CreditCard className={`w-8 h-8 ${paymentMethod === 'connectia' ? 'text-primary' : 'text-muted-foreground'}`} />
                                     <div>
                                         <p className="font-bold heading text-sm">Connectia (TDC / TDD)</p>
-                                        <p className="text-xs text-muted-foreground mt-1">Pago seguro en linea</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {paymentOptions.connectia.feedback || paymentOptions.connectia.description}
+                                        </p>
                                     </div>
                                 </div>
 
                                 <div
-                                    onClick={() => setPaymentMethod('paypal')}
-                                    className={`cursor-pointer rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentMethod === 'paypal' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
+                                    onClick={() => paymentOptions.paypal.enabled && setPaymentMethod('paypal')}
+                                    className={`rounded-2xl p-4 border-2 transition-all flex flex-col items-center justify-center gap-3 text-center ${paymentOptions.paypal.enabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} ${paymentMethod === 'paypal' ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-primary/30 bg-white'}`}
                                 >
                                     <svg viewBox="0 0 24 24" className={`w-8 h-8 ${paymentMethod === 'paypal' ? 'fill-primary' : 'fill-muted-foreground'}`}>
                                         <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106a.64.64 0 0 1-.632.54h.632z" />
                                     </svg>
                                     <div>
                                         <p className="font-bold heading text-sm">PayPal</p>
-                                        <p className="text-xs text-muted-foreground mt-1">Paga con tu cuenta PayPal</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {paymentOptions.paypal.feedback || paymentOptions.paypal.description}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
+                            {!paymentOptions[paymentMethod].enabled && paymentOptions[paymentMethod].feedback ? (
+                                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mt-4">
+                                    {paymentOptions[paymentMethod].feedback}
+                                </p>
+                            ) : null}
                         </section>
                     </div>
 
