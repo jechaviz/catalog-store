@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import AdminLayout from "@/components/app/admin/AdminLayout";
 import { fetchCatalogData, CatalogProduct, Category } from "@/lib/dataFetcher";
 import { useBrand } from "@/contexts/BrandContext";
@@ -70,7 +70,9 @@ import {
   deleteLocalCatalogProduct,
   isLocalCatalogStorageKeyForBrand,
   readLocalCatalogOverrides as readLocalProductOverrides,
+  saveLocalCatalogOverrides,
   upsertLocalCatalogProduct,
+  type LocalCatalogOverrides as LocalProductOverrides,
 } from "@/lib/adminCatalogStorage";
 import {
   LOCAL_CATEGORY_EVENT_NAME,
@@ -117,6 +119,31 @@ type OdooCategoriesQueryResult = {
   };
 };
 
+type CatalogSyncMode = "checking" | "remote" | "local";
+
+interface CatalogSyncState {
+  mode: CatalogSyncMode;
+  message: string;
+  updatedAt?: string;
+}
+
+interface RemoteCatalogSnapshot {
+  productOverrides?: LocalProductOverrides;
+  localProductOverrides?: LocalProductOverrides;
+  categoryOverrides?: LocalCategoryOverrides;
+  localCategoryOverrides?: LocalCategoryOverrides;
+  categoryAdminState?: CategoryAdminState;
+  adminState?: CategoryAdminState;
+}
+
+interface RemoteCatalogResult {
+  source: "remote" | "local";
+  updatedAt?: string;
+  reason?: string;
+}
+
+const REMOTE_CATALOG_RESOURCE = "catalog-admin";
+
 const NATURA_BASE_CATEGORIES: Category[] = [
   { id: "1", name: "Perfumeria" },
   { id: "2", name: "Maquillaje" },
@@ -147,6 +174,13 @@ function createEmptyLocalCategoryOverrides(): LocalCategoryOverrides {
   return {
     categories: [],
     deletedCategoryIds: [],
+  };
+}
+
+function createEmptyLocalProductOverrides(): LocalProductOverrides {
+  return {
+    products: [],
+    deletedProductIds: [],
   };
 }
 
@@ -215,6 +249,292 @@ function normalizeCategoryAdminState(value: unknown): CategoryAdminState {
           .map(category => normalizeCategoryRecord(category))
           .filter((category): category is Category => category !== null)
       : [],
+  };
+}
+
+function getRemoteCatalogEndpointCandidates() {
+  const env = import.meta.env as Record<string, string | undefined>;
+
+  return Array.from(
+    new Set(
+      [
+        env.VITE_ADMIN_PERSISTENCE_URL,
+        env.VITE_ADMIN_REMOTE_URL,
+        env.VITE_ADMIN_CATALOG_ENDPOINT,
+        "/api/admin/persistence",
+        "/api/admin/shared-state",
+        "/api/admin/catalog-state",
+      ]
+        .map(value => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean)
+    )
+  );
+}
+
+function buildRemoteCatalogUrl(
+  rawEndpoint: string,
+  brand: BrandKey,
+  resource: string
+) {
+  const resolvedUrl =
+    rawEndpoint.startsWith("http://") || rawEndpoint.startsWith("https://")
+      ? new URL(rawEndpoint)
+      : new URL(rawEndpoint, window.location.origin);
+
+  resolvedUrl.searchParams.set("brand", brand);
+  resolvedUrl.searchParams.set("resource", resource);
+
+  return resolvedUrl.toString();
+}
+
+function extractRemoteTimestamp(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const timestampKeys = ["updatedAt", "savedAt", "syncedAt", "timestamp"];
+
+  for (const key of timestampKeys) {
+    const rawValue = candidate[key];
+    if (typeof rawValue === "string" && rawValue.trim()) {
+      return rawValue;
+    }
+  }
+
+  return undefined;
+}
+
+function isRemoteCatalogSnapshotShape(candidate: Record<string, unknown>) {
+  return (
+    "productOverrides" in candidate ||
+    "localProductOverrides" in candidate ||
+    "categoryOverrides" in candidate ||
+    "localCategoryOverrides" in candidate ||
+    "categoryAdminState" in candidate ||
+    "adminState" in candidate
+  );
+}
+
+function extractRemoteCatalogSnapshot(value: unknown): RemoteCatalogSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (isRemoteCatalogSnapshotShape(candidate)) {
+    return candidate as RemoteCatalogSnapshot;
+  }
+
+  const envelopeKeys = ["snapshot", "catalog", "payload", "data", "value"];
+
+  for (const key of envelopeKeys) {
+    const nestedValue = candidate[key];
+    if (!nestedValue || typeof nestedValue !== "object" || Array.isArray(nestedValue)) {
+      continue;
+    }
+
+    const nestedCandidate = nestedValue as Record<string, unknown>;
+    if (isRemoteCatalogSnapshotShape(nestedCandidate)) {
+      return nestedCandidate as RemoteCatalogSnapshot;
+    }
+  }
+
+  return null;
+}
+
+function applyRemoteCatalogSnapshot(
+  brand: BrandKey,
+  snapshot: RemoteCatalogSnapshot
+) {
+  let applied = false;
+
+  const nextProductOverrides =
+    snapshot.localProductOverrides ?? snapshot.productOverrides;
+  const nextCategoryOverrides =
+    snapshot.localCategoryOverrides ?? snapshot.categoryOverrides;
+  const nextCategoryAdminState =
+    snapshot.categoryAdminState ?? snapshot.adminState;
+
+  if (nextProductOverrides) {
+    saveLocalCatalogOverrides(brand, nextProductOverrides);
+    applied = true;
+  }
+
+  if (nextCategoryOverrides) {
+    saveLocalCategoryOverrides(brand, nextCategoryOverrides);
+    applied = true;
+  }
+
+  if (nextCategoryAdminState) {
+    saveCategoryAdminState(brand, normalizeCategoryAdminState(nextCategoryAdminState));
+    applied = true;
+  }
+
+  return applied;
+}
+
+function createCatalogSyncState(
+  mode: CatalogSyncMode,
+  options?: { updatedAt?: string; reason?: string }
+): CatalogSyncState {
+  if (mode === "checking") {
+    return {
+      mode,
+      message:
+        "Consultando cambios compartidos y copia local antes de mostrar este administrador.",
+    };
+  }
+
+  if (mode === "remote") {
+    return {
+      mode,
+      message:
+        "La sincronizacion compartida esta disponible. Los cambios nuevos intentaran guardarse para otros dispositivos.",
+      updatedAt: options?.updatedAt,
+    };
+  }
+
+  return {
+    mode,
+    message:
+      options?.reason ??
+      "El backend no respondio ahora. Seguimos trabajando sobre la copia local de este navegador.",
+  };
+}
+
+function formatCatalogSyncTimestamp(updatedAt?: string) {
+  if (!updatedAt) {
+    return "";
+  }
+
+  const parsedDate = new Date(updatedAt);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsedDate);
+}
+
+async function hydrateRemoteCatalogState(
+  brand: BrandKey,
+  signal?: AbortSignal
+): Promise<RemoteCatalogResult> {
+  const endpointCandidates = getRemoteCatalogEndpointCandidates();
+  let lastFailureReason = "";
+
+  for (const endpoint of endpointCandidates) {
+    try {
+      const response = await fetch(
+        buildRemoteCatalogUrl(endpoint, brand, REMOTE_CATALOG_RESOURCE),
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+          credentials: "include",
+          signal,
+        }
+      );
+
+      if (!response.ok) {
+        lastFailureReason = `El backend devolvio ${response.status}.`;
+        continue;
+      }
+
+      const payload = await response.json().catch(() => null);
+      const snapshot = extractRemoteCatalogSnapshot(payload);
+
+      if (!snapshot) {
+        lastFailureReason =
+          "El backend no devolvio un snapshot utilizable para productos y categorias.";
+        continue;
+      }
+
+      if (!applyRemoteCatalogSnapshot(brand, snapshot)) {
+        lastFailureReason =
+          "El backend respondio, pero no trajo cambios administrativos aplicables.";
+        continue;
+      }
+
+      return {
+        source: "remote",
+        updatedAt: extractRemoteTimestamp(payload),
+      };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw error;
+      }
+
+      lastFailureReason =
+        error instanceof Error && error.message
+          ? error.message
+          : "No fue posible hidratar los cambios compartidos.";
+    }
+  }
+
+  return {
+    source: "local",
+    reason: lastFailureReason,
+  };
+}
+
+async function persistRemoteCatalogState(
+  brand: BrandKey,
+  snapshot: RemoteCatalogSnapshot
+): Promise<RemoteCatalogResult> {
+  const endpointCandidates = getRemoteCatalogEndpointCandidates();
+  let lastFailureReason = "";
+
+  for (const endpoint of endpointCandidates) {
+    for (const method of ["PUT", "POST"] as const) {
+      try {
+        const response = await fetch(
+          buildRemoteCatalogUrl(endpoint, brand, REMOTE_CATALOG_RESOURCE),
+          {
+            method,
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              brand,
+              resource: REMOTE_CATALOG_RESOURCE,
+              payload: snapshot,
+              snapshot,
+              data: snapshot,
+              value: snapshot,
+              updatedAt: new Date().toISOString(),
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          lastFailureReason = `El backend devolvio ${response.status}.`;
+          continue;
+        }
+
+        const payload = await response.json().catch(() => null);
+        return {
+          source: "remote",
+          updatedAt: extractRemoteTimestamp(payload) ?? new Date().toISOString(),
+        };
+      } catch (error) {
+        lastFailureReason =
+          error instanceof Error && error.message
+            ? error.message
+            : "No fue posible enviar los cambios compartidos.";
+      }
+    }
+  }
+
+  return {
+    source: "local",
+    reason: lastFailureReason,
   };
 }
 
@@ -515,6 +835,8 @@ function buildDraftFromProduct(product: CatalogProduct): DraftProduct {
 
 export default function ProductManager() {
   const { brand } = useBrand();
+  const applyingRemoteSnapshotRef = useRef(false);
+  const activeCatalogLoadRef = useRef<AbortController | null>(null);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [baseCategories, setBaseCategories] = useState<Category[]>([]);
   const [localCategoryOverrides, setLocalCategoryOverrides] =
@@ -522,6 +844,10 @@ export default function ProductManager() {
   const [categoryAdminState, setCategoryAdminState] =
     useState<CategoryAdminState>(() => createEmptyCategoryAdminState());
   const [loading, setLoading] = useState(true);
+  const [remoteSyncState, setRemoteSyncState] = useState<CatalogSyncState>(() =>
+    createCatalogSyncState("checking")
+  );
+  const [isRemoteSyncing, setIsRemoteSyncing] = useState(false);
   const [hasLocalChanges, setHasLocalChanges] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
@@ -565,15 +891,47 @@ export default function ProductManager() {
 
   const loadCatalog = async (
     currentBrand: BrandKey = brand,
-    options?: { preserveDraft?: boolean }
+    options?: { preserveDraft?: boolean; skipRemoteHydration?: boolean }
   ) => {
+    activeCatalogLoadRef.current?.abort();
+    const abortController = new AbortController();
+    activeCatalogLoadRef.current = abortController;
+
     setLoading(true);
     try {
+      if (!options?.skipRemoteHydration) {
+        setRemoteSyncState(createCatalogSyncState("checking"));
+        applyingRemoteSnapshotRef.current = true;
+
+        try {
+          const remoteResult = await hydrateRemoteCatalogState(
+            currentBrand,
+            abortController.signal
+          );
+
+          if (abortController.signal.aborted) {
+            return;
+          }
+
+          setRemoteSyncState(
+            createCatalogSyncState(
+              remoteResult.source === "remote" ? "remote" : "local",
+              {
+                updatedAt: remoteResult.updatedAt,
+                reason: remoteResult.reason,
+              }
+            )
+          );
+        } finally {
+          applyingRemoteSnapshotRef.current = false;
+        }
+      }
+
       const [data, rawBaseCategories] = await Promise.all([
         fetchCatalogData(currentBrand),
         loadBaseCategories(currentBrand),
       ]);
-      if (!data) return;
+      if (abortController.signal.aborted || !data) return;
 
       const nextBaseCategories = mergeBaseCategorySources(
         rawBaseCategories,
@@ -623,7 +981,13 @@ export default function ProductManager() {
         }));
       }
     } finally {
-      setLoading(false);
+      if (activeCatalogLoadRef.current === abortController) {
+        activeCatalogLoadRef.current = null;
+      }
+
+      if (!abortController.signal.aborted) {
+        setLoading(false);
+      }
     }
   };
 
@@ -639,18 +1003,30 @@ export default function ProductManager() {
     setEditingCategoryId(null);
     setLocalCategoryOverrides(createEmptyLocalCategoryOverrides());
     setCategoryAdminState(createEmptyCategoryAdminState());
+    setRemoteSyncState(createCatalogSyncState("checking"));
     setDeleteTarget(null);
     setClearLocalChangesOpen(false);
     setDraft(createEmptyDraft(brand, []));
     void loadCatalog(brand);
+
+    return () => {
+      activeCatalogLoadRef.current?.abort();
+    };
   }, [brand]);
 
   useEffect(() => {
     const syncCatalog = () => {
-      void loadCatalog(brand, { preserveDraft: editorOpen });
+      void loadCatalog(brand, {
+        preserveDraft: editorOpen,
+        skipRemoteHydration: true,
+      });
     };
 
     const handleStorageEvent = (event: StorageEvent) => {
+      if (applyingRemoteSnapshotRef.current) {
+        return;
+      }
+
       if (
         isLocalCatalogStorageKeyForBrand(event.key, brand) ||
         isLocalCategoryStorageKeyForBrand(event.key, brand) ||
@@ -661,6 +1037,10 @@ export default function ProductManager() {
     };
 
     const handleLocalCatalogEvent = (event: Event) => {
+      if (applyingRemoteSnapshotRef.current) {
+        return;
+      }
+
       const customEvent = event as CustomEvent<{
         brand?: string;
         storageKey?: string;
@@ -674,6 +1054,10 @@ export default function ProductManager() {
     };
 
     const handleLocalCategoryEvent = (event: Event) => {
+      if (applyingRemoteSnapshotRef.current) {
+        return;
+      }
+
       const customEvent = event as CustomEvent<{
         brand?: string;
         storageKey?: string;
@@ -800,6 +1184,16 @@ export default function ProductManager() {
     baseCategories
   );
 
+  const buildCurrentRemoteSnapshot = (
+    nextProductOverrides = readLocalProductOverrides(brand),
+    nextCategoryOverrides = readLocalCategoryOverrides(brand),
+    nextCategoryAdminState = readCategoryAdminState(brand)
+  ): RemoteCatalogSnapshot => ({
+    productOverrides: nextProductOverrides,
+    categoryOverrides: nextCategoryOverrides,
+    categoryAdminState: normalizeCategoryAdminState(nextCategoryAdminState),
+  });
+
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const search = searchTerm.toLowerCase();
@@ -866,6 +1260,30 @@ export default function ProductManager() {
     saveCategoryAdminState(brand, normalizedAdminState);
   };
 
+  const syncRemoteSnapshot = async (
+    snapshot: RemoteCatalogSnapshot,
+    messages: { remote: string; local: string }
+  ) => {
+    setIsRemoteSyncing(true);
+
+    try {
+      const result = await persistRemoteCatalogState(brand, snapshot);
+      setRemoteSyncState(
+        createCatalogSyncState(
+          result.source === "remote" ? "remote" : "local",
+          {
+            updatedAt: result.updatedAt,
+            reason: result.reason,
+          }
+        )
+      );
+      toast.success(result.source === "remote" ? messages.remote : messages.local);
+      return result;
+    } finally {
+      setIsRemoteSyncing(false);
+    }
+  };
+
   const resetCategoryEditor = () => {
     setCategoryEditorMode("create");
     setCategoryDraftName("");
@@ -926,7 +1344,7 @@ export default function ProductManager() {
     setEditorOpen(true);
   };
 
-  const handleSaveCategory = () => {
+  const handleSaveCategory = async () => {
     const nextName = normalizeCategoryName(categoryDraftName);
 
     if (!nextName) {
@@ -1056,14 +1474,22 @@ export default function ProductManager() {
     }
 
     resetCategoryEditor();
-    toast.success(
-      categoryEditorMode === "create"
-        ? `Categoria creada localmente para ${brandLabel(brand)}.`
-        : `Categoria actualizada localmente para ${brandLabel(brand)}.`
-    );
+    await syncRemoteSnapshot(buildCurrentRemoteSnapshot(), {
+      remote:
+        categoryEditorMode === "create"
+          ? `Categoria creada y sincronizada para ${brandLabel(brand)}.`
+          : `Categoria actualizada y sincronizada para ${brandLabel(brand)}.`,
+      local:
+        categoryEditorMode === "create"
+          ? `Categoria creada solo en este navegador. No pudimos compartirla con el backend ahora.`
+          : `Categoria actualizada solo en este navegador. El backend no respondio para compartir el cambio.`,
+    });
   };
 
-  const moveCategory = (categoryId: string, direction: "up" | "down") => {
+  const moveCategory = async (
+    categoryId: string,
+    direction: "up" | "down"
+  ) => {
     const currentOrder = categories.map(category => category.id);
     const currentIndex = currentOrder.indexOf(categoryId);
     const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
@@ -1086,11 +1512,14 @@ export default function ProductManager() {
       ...categoryAdminState,
       orderedVisibleCategoryIds: nextOrder,
     });
-
-    toast.success("Orden local de categorias actualizado.");
+    await syncRemoteSnapshot(buildCurrentRemoteSnapshot(), {
+      remote: "Orden de categorias sincronizado.",
+      local:
+        "Orden guardado solo en este navegador. El backend no respondio para compartirlo.",
+    });
   };
 
-  const toggleCategoryVisibility = (
+  const toggleCategoryVisibility = async (
     category: Category,
     shouldBeVisible: boolean
   ) => {
@@ -1151,7 +1580,11 @@ export default function ProductManager() {
       }
 
       persistCategoryState(nextOverrides, nextAdminState);
-      toast.success(`Categoria visible otra vez para ${brandLabel(brand)}.`);
+      await syncRemoteSnapshot(buildCurrentRemoteSnapshot(), {
+        remote: `Categoria visible otra vez y sincronizada para ${brandLabel(brand)}.`,
+        local:
+          "La categoria volvio a mostrarse solo en este navegador. El backend no respondio para compartir el cambio.",
+      });
       return;
     }
 
@@ -1177,12 +1610,15 @@ export default function ProductManager() {
     }
 
     persistCategoryState(nextOverrides, nextAdminState);
-    toast.success(
-      `Categoria oculta localmente. Si un draft la sigue usando, podras guardarlo, pero el storefront la tratara como "Sin categoria" mientras siga oculta.`
-    );
+    await syncRemoteSnapshot(buildCurrentRemoteSnapshot(), {
+      remote:
+        'Categoria oculta y sincronizada. Los drafts existentes seguiran pudiendo guardarse.',
+      local:
+        'Categoria oculta solo en este navegador. Si el backend sigue caido, otros dispositivos no veran este ajuste.',
+    });
   };
 
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
     const parsedPrice = Number(draft.price);
     const deliveryMethods = normalizeListInput(draft.deliveryMethodsText);
     const benefits = normalizeListInput(draft.benefitsText);
@@ -1245,14 +1681,19 @@ export default function ProductManager() {
     upsertLocalCatalogProduct(brand, nextProduct);
     setHasLocalChanges(true);
     closeEditor();
-    toast.success(
-      editorMode === "edit"
-        ? `Producto actualizado localmente para ${brandLabel(brand)}.`
-        : `Producto guardado localmente para ${brandLabel(brand)}.`
-    );
+    await syncRemoteSnapshot(buildCurrentRemoteSnapshot(), {
+      remote:
+        editorMode === "edit"
+          ? `Producto actualizado y sincronizado para ${brandLabel(brand)}.`
+          : `Producto guardado y sincronizado para ${brandLabel(brand)}.`,
+      local:
+        editorMode === "edit"
+          ? "Producto actualizado solo en este navegador. El backend no respondio para compartir la edicion."
+          : "Producto guardado solo en este navegador. El backend no respondio para compartir el alta.",
+    });
   };
 
-  const toggleStock = (productId: string) => {
+  const toggleStock = async (productId: string) => {
     const targetProduct = products.find(product => product.id === productId);
     if (!targetProduct) return;
 
@@ -1262,22 +1703,27 @@ export default function ProductManager() {
     );
     upsertLocalCatalogProduct(brand, nextProduct);
     setHasLocalChanges(true);
-    toast.success(
-      targetProduct.inStock
-        ? "Producto marcado como agotado."
-        : "Producto marcado como disponible."
-    );
+    await syncRemoteSnapshot(buildCurrentRemoteSnapshot(), {
+      remote: targetProduct.inStock
+        ? "Producto marcado como agotado y sincronizado."
+        : "Producto marcado como disponible y sincronizado.",
+      local: targetProduct.inStock
+        ? "Producto marcado como agotado solo en este navegador. No pudimos compartir el ajuste."
+        : "Producto marcado como disponible solo en este navegador. No pudimos compartir el ajuste.",
+    });
   };
 
-  const deleteProduct = () => {
+  const deleteProduct = async () => {
     if (!deleteTarget) return;
 
     setProducts(prev => prev.filter(product => product.id !== deleteTarget.id));
     deleteLocalCatalogProduct(brand, deleteTarget.id);
     setHasLocalChanges(true);
-    toast.success(
-      `Producto eliminado del catalogo local de ${brandLabel(brand)}.`
-    );
+    await syncRemoteSnapshot(buildCurrentRemoteSnapshot(), {
+      remote: `Producto eliminado y sincronizado para ${brandLabel(brand)}.`,
+      local:
+        "Producto eliminado solo en este navegador. El backend no respondio para compartir la baja.",
+    });
     setDeleteTarget(null);
   };
 
@@ -1292,8 +1738,22 @@ export default function ProductManager() {
       resetCategoryEditor();
       setDeleteTarget(null);
       setClearLocalChangesOpen(false);
-      await loadCatalog(brand);
-      toast.success(`Cambios locales de ${brandLabel(brand)} limpiados.`);
+      setLocalCategoryOverrides(createEmptyLocalCategoryOverrides());
+      setCategoryAdminState(createEmptyCategoryAdminState());
+      setHasLocalChanges(false);
+      await syncRemoteSnapshot(
+        {
+          productOverrides: createEmptyLocalProductOverrides(),
+          categoryOverrides: createEmptyLocalCategoryOverrides(),
+          categoryAdminState: createEmptyCategoryAdminState(),
+        },
+        {
+          remote: `Cambios locales y compartidos de ${brandLabel(brand)} limpiados.`,
+          local:
+            "Limpiamos esta copia local, pero el backend no respondio. La version compartida puede seguir teniendo cambios previos.",
+        }
+      );
+      await loadCatalog(brand, { skipRemoteHydration: true });
     } finally {
       setLoading(false);
     }
@@ -1309,8 +1769,8 @@ export default function ProductManager() {
     editorMode === "edit" ? "Editar producto local" : "Nuevo producto local";
   const editorDescription =
     editorMode === "edit"
-      ? `Actualiza nombre, descripcion, imagen, entrega y precio. El cambio queda guardado en este navegador para ${brandLabel(brand)}.`
-      : `Crea un producto local completo para ${brandLabel(brand)}. Esta alta no modifica Odoo ni el catalogo remoto.`;
+      ? `Actualiza nombre, descripcion, imagen, entrega y precio. Este admin intenta sincronizar el cambio compartido y conserva fallback local si el backend falla.`
+      : `Crea un producto administrativo para ${brandLabel(brand)}. Intentaremos compartirlo con otros dispositivos cuando el backend responda; si no, quedara guardado localmente.`;
 
   return (
     <AdminLayout>
@@ -1322,7 +1782,8 @@ export default function ProductManager() {
             </h1>
             <p className="text-slate-500">
               Administra el catalogo de {brandLabel(brand)} con altas y
-              ediciones persistentes en este navegador para cada marca.
+              ediciones que intentan sincronizarse como cambios compartidos y
+              conservan copia local por marca cuando el backend no responde.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
@@ -1332,7 +1793,7 @@ export default function ProductManager() {
                 className="rounded-xl"
                 onClick={() => setClearLocalChangesOpen(true)}
               >
-                Limpiar cambios locales
+                Limpiar cambios guardados
               </Button>
             )}
             <Button
@@ -1351,6 +1812,31 @@ export default function ProductManager() {
             </Button>
           </div>
         </div>
+
+        <Card className="border-none shadow-sm">
+          <CardContent className="flex flex-col gap-2 p-4 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">
+            <div
+              className={`rounded-2xl px-4 py-3 ${
+                remoteSyncState.mode === "remote"
+                  ? "bg-emerald-50 text-emerald-800"
+                  : remoteSyncState.mode === "local"
+                    ? "bg-amber-50 text-amber-900"
+                    : "bg-slate-50 text-slate-600"
+              }`}
+            >
+              {remoteSyncState.message}
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-400">
+              {isRemoteSyncing ? <span>Sincronizando cambios...</span> : null}
+              {remoteSyncState.updatedAt ? (
+                <span>
+                  Ultima respuesta remota:{" "}
+                  {formatCatalogSyncTimestamp(remoteSyncState.updatedAt)}
+                </span>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border-none shadow-sm overflow-hidden">
           <CardContent className="p-0">
@@ -1487,7 +1973,7 @@ export default function ProductManager() {
                     variant="outline"
                     className="rounded-full border-amber-200 px-3 py-1 text-amber-700"
                   >
-                    Cambios locales persistentes para {brandLabel(brand)}
+                    Cambios pendientes en la copia local de {brandLabel(brand)}
                   </Badge>
                 )}
                 {hasLocalCategoryOverrides && (
@@ -1697,10 +2183,10 @@ export default function ProductManager() {
           <DialogHeader>
             <DialogTitle>Gestionar categorias por marca</DialogTitle>
             <DialogDescription>
-              Ordena, oculta o vuelve a mostrar categorias solo para{" "}
-              {brandLabel(brand)} en este navegador. Ocultar si impacta el
-              storefront local; el orden queda guardado en este admin y listo
-              para conectarse cuando esa capa consuma esta preferencia.
+              Ordena, oculta o vuelve a mostrar categorias para{" "}
+              {brandLabel(brand)}. Esta vista intenta sincronizar estos cambios
+              compartidos y mantiene fallback local si el backend no esta
+              disponible.
             </DialogDescription>
           </DialogHeader>
 
@@ -1720,8 +2206,9 @@ export default function ProductManager() {
                     placeholder="Ej. Bienestar diario"
                   />
                   <p className="mt-2 text-xs text-slate-400">
-                    Base y local se distinguen aqui mismo. Nada de esto toca
-                    backend ni catalogo remoto.
+                    Base y local se distinguen aqui mismo. Los cambios intentan
+                    compartirse; si el backend falla, quedan en esta copia
+                    local.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -1745,10 +2232,11 @@ export default function ProductManager() {
 
             <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-4 text-sm text-amber-900">
               Ocultar una categoria la saca de filtros y navegacion del
-              storefront local para esta marca en este navegador. Si un draft ya
-              la trae seleccionada, podras terminar de guardarlo sin romper el
-              flujo, pero el storefront la mostrara como "Sin categoria"
-              mientras siga oculta.
+              storefront para esta marca. Si un draft ya la trae seleccionada,
+              podras terminar de guardarlo sin romper el flujo, pero el
+              storefront la mostrara como "Sin categoria" mientras siga
+              oculta. Tambien intentaremos compartir esa visibilidad si el
+              backend responde.
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
@@ -2112,7 +2600,8 @@ export default function ProductManager() {
                   ) : (
                     <p className="mt-2 text-xs text-slate-400">
                       Puedes crear, renombrar, ordenar u ocultar categorias
-                      desde "Gestionar categorias".
+                      desde "Gestionar categorias". Ese ajuste intenta
+                      sincronizarse y conserva fallback local.
                     </p>
                   )}
                 </div>
@@ -2373,8 +2862,9 @@ export default function ProductManager() {
                     </p>
                     {draftHiddenCategory ? (
                       <p className="text-xs text-amber-700 mt-1">
-                        Esta categoria esta oculta para el storefront local en
-                        este navegador.
+                        Esta categoria esta oculta para el storefront y, si el
+                        backend no responde, este estado seguira al menos en
+                        esta copia local.
                       </p>
                     ) : null}
                     {editorMode === "edit" && editingTarget && (
@@ -2412,7 +2902,7 @@ export default function ProductManager() {
             <AlertDialogTitle>Eliminar producto</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget
-                ? `Quitaremos "${deleteTarget.name}" del catalogo local persistente de ${brandLabel(brand)}.`
+                ? `Quitaremos "${deleteTarget.name}" del admin de ${brandLabel(brand)}. Intentaremos reflejarlo tambien en la version compartida si el backend responde.`
                 : "Confirma la eliminacion."}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -2439,8 +2929,9 @@ export default function ProductManager() {
             <AlertDialogTitle>Limpiar cambios locales</AlertDialogTitle>
             <AlertDialogDescription>
               Restableceremos productos, visibilidad y orden local de categorias
-              de {brandLabel(brand)} al estado base y borraremos las ediciones
-              guardadas en este navegador.
+              de {brandLabel(brand)} al estado base. Tambien intentaremos
+              limpiar la version compartida; si el backend falla, te avisaremos
+              que solo se limpio esta copia local.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

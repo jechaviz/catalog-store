@@ -17,9 +17,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/shared/ui/input';
 import { Textarea } from '@/components/shared/ui/textarea';
 import { useBrand } from '@/contexts/BrandContext';
-import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import {
   normalizeSellerPhone,
+  readStorefrontSettings,
   saveStorefrontSettings,
   type StorefrontSettings,
 } from '@/lib/storefrontSettings';
@@ -38,20 +38,348 @@ const SECTION_BUTTONS: Array<{
   { id: 'security', label: 'Seguridad', icon: ShieldCheck },
 ];
 
+type SettingsSyncMode = 'checking' | 'remote' | 'local';
+
+interface SettingsSyncState {
+  mode: SettingsSyncMode;
+  message: string;
+  updatedAt?: string;
+}
+
+interface RemoteSettingsResult {
+  source: 'remote' | 'local';
+  settings: StorefrontSettings;
+  updatedAt?: string;
+  reason?: string;
+}
+
+const REMOTE_SETTINGS_RESOURCE = 'storefront-settings';
+const STORE_FRONT_SETTINGS_KEYS: Array<keyof StorefrontSettings> = [
+  'siteName',
+  'slogan',
+  'logoImageUrl',
+  'heroImageUrl',
+  'heroEyebrow',
+  'heroDescription',
+  'sellerPhone',
+  'sellerMessageTemplate',
+  'connectiaPaymentLink',
+  'paypalPaymentLink',
+  'paypalUsername',
+  'transferClabe',
+  'transferInstructions',
+];
+
+function getRemoteSettingsEndpointCandidates() {
+  const env = import.meta.env as Record<string, string | undefined>;
+
+  return Array.from(
+    new Set(
+      [
+        env.VITE_ADMIN_PERSISTENCE_URL,
+        env.VITE_ADMIN_REMOTE_URL,
+        env.VITE_ADMIN_SETTINGS_ENDPOINT,
+        '/api/admin/persistence',
+        '/api/admin/shared-state',
+        '/api/admin/storefront-settings',
+      ]
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter(Boolean)
+    )
+  );
+}
+
+function buildRemotePersistenceUrl(rawEndpoint: string, brand: string, resource: string) {
+  const resolvedUrl =
+    rawEndpoint.startsWith('http://') || rawEndpoint.startsWith('https://')
+      ? new URL(rawEndpoint)
+      : new URL(rawEndpoint, window.location.origin);
+
+  resolvedUrl.searchParams.set('brand', brand);
+  resolvedUrl.searchParams.set('resource', resource);
+
+  return resolvedUrl.toString();
+}
+
+function extractTimestamp(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const timestampKeys = ['updatedAt', 'savedAt', 'syncedAt', 'timestamp'];
+
+  for (const key of timestampKeys) {
+    const rawValue = candidate[key];
+    if (typeof rawValue === 'string' && rawValue.trim()) {
+      return rawValue;
+    }
+  }
+
+  return undefined;
+}
+
+function extractStorefrontSettingsPayload(value: unknown): Partial<StorefrontSettings> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const hasDirectSettingsField = STORE_FRONT_SETTINGS_KEYS.some((key) => typeof candidate[key] === 'string');
+
+  if (hasDirectSettingsField) {
+    return candidate as Partial<StorefrontSettings>;
+  }
+
+  const envelopeKeys = ['settings', 'storefrontSettings', 'payload', 'data', 'value'];
+
+  for (const key of envelopeKeys) {
+    const nestedValue = candidate[key];
+    if (nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
+      const nestedCandidate = nestedValue as Record<string, unknown>;
+      if (STORE_FRONT_SETTINGS_KEYS.some((settingsKey) => typeof nestedCandidate[settingsKey] === 'string')) {
+        return nestedCandidate as Partial<StorefrontSettings>;
+      }
+    }
+  }
+
+  return null;
+}
+
+function createSettingsSyncState(
+  mode: SettingsSyncMode,
+  options?: { updatedAt?: string; reason?: string }
+): SettingsSyncState {
+  if (mode === 'checking') {
+    return {
+      mode,
+      message: 'Consultando backend y copia local antes de mostrar la configuracion compartida.',
+    };
+  }
+
+  if (mode === 'remote') {
+    return {
+      mode,
+      message:
+        'La configuracion compartida esta activa. Los nuevos cambios intentaran sincronizarse para otros dispositivos.',
+      updatedAt: options?.updatedAt,
+    };
+  }
+
+  return {
+    mode,
+    message:
+      options?.reason ??
+      'El backend no respondio ahora. Seguimos usando y guardando la copia local de este navegador.',
+  };
+}
+
+function formatSyncTimestamp(updatedAt?: string) {
+  if (!updatedAt) {
+    return '';
+  }
+
+  const parsedDate = new Date(updatedAt);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(parsedDate);
+}
+
+async function fetchRemoteStorefrontSettings(
+  brand: string,
+  signal?: AbortSignal
+): Promise<RemoteSettingsResult> {
+  const localSettings = readStorefrontSettings(brand as 'natura' | 'nikken');
+  const endpointCandidates = getRemoteSettingsEndpointCandidates();
+  let lastFailureReason = '';
+
+  for (const endpoint of endpointCandidates) {
+    try {
+      const response = await fetch(
+        buildRemotePersistenceUrl(endpoint, brand, REMOTE_SETTINGS_RESOURCE),
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+          credentials: 'include',
+          signal,
+        }
+      );
+
+      if (!response.ok) {
+        lastFailureReason = `El backend devolvio ${response.status}.`;
+        continue;
+      }
+
+      const payload = await response.json().catch(() => null);
+      const remoteSettings = extractStorefrontSettingsPayload(payload);
+
+      if (!remoteSettings) {
+        lastFailureReason = 'El backend no devolvio una configuracion utilizable.';
+        continue;
+      }
+
+      const nextSettings = saveStorefrontSettings(brand as 'natura' | 'nikken', remoteSettings);
+
+      return {
+        source: 'remote',
+        settings: nextSettings,
+        updatedAt: extractTimestamp(payload),
+      };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+
+      lastFailureReason =
+        error instanceof Error && error.message
+          ? error.message
+          : 'No fue posible consultar la configuracion remota.';
+    }
+  }
+
+  return {
+    source: 'local',
+    settings: localSettings,
+    updatedAt: undefined,
+    reason: lastFailureReason,
+  };
+}
+
+async function persistRemoteStorefrontSettings(
+  brand: string,
+  settings: StorefrontSettings
+): Promise<RemoteSettingsResult> {
+  const localSettings = saveStorefrontSettings(brand as 'natura' | 'nikken', settings);
+  const endpointCandidates = getRemoteSettingsEndpointCandidates();
+
+  for (const endpoint of endpointCandidates) {
+    for (const method of ['PUT', 'POST'] as const) {
+      try {
+        const response = await fetch(
+          buildRemotePersistenceUrl(endpoint, brand, REMOTE_SETTINGS_RESOURCE),
+          {
+            method,
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              brand,
+              resource: REMOTE_SETTINGS_RESOURCE,
+              payload: localSettings,
+              settings: localSettings,
+              data: localSettings,
+              value: localSettings,
+              updatedAt: new Date().toISOString(),
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          continue;
+        }
+
+        const payload = await response.json().catch(() => null);
+        const remoteSettings = extractStorefrontSettingsPayload(payload);
+        const nextSettings = remoteSettings
+          ? saveStorefrontSettings(brand as 'natura' | 'nikken', remoteSettings)
+          : localSettings;
+
+        return {
+          source: 'remote',
+          settings: nextSettings,
+          updatedAt: extractTimestamp(payload) ?? new Date().toISOString(),
+        };
+      } catch {
+        // Intentamos el siguiente endpoint o metodo.
+      }
+    }
+  }
+
+  return {
+    source: 'local',
+    settings: localSettings,
+    reason: 'El backend no respondio para compartir esta configuracion.',
+  };
+}
+
 export default function AdminSettings() {
   const { brand } = useBrand();
-  const settings = useStorefrontSettings(brand);
+  const brandLabel = brand === 'nikken' ? 'Nikken' : 'Natura';
   const [loading, setLoading] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(true);
+  const [baselineSettings, setBaselineSettings] = useState<StorefrontSettings>(() =>
+    readStorefrontSettings(brand)
+  );
   const [activeSection, setActiveSection] = useState<SettingsSection>('general');
-  const [formValues, setFormValues] = useState<StorefrontSettings>(settings);
+  const [formValues, setFormValues] = useState<StorefrontSettings>(() => readStorefrontSettings(brand));
+  const [syncState, setSyncState] = useState<SettingsSyncState>(() =>
+    createSettingsSyncState('checking')
+  );
 
   useEffect(() => {
-    setFormValues(settings);
-  }, [settings]);
+    const abortController = new AbortController();
+
+    setIsHydrating(true);
+    setLoading(false);
+    setActiveSection('general');
+    setSyncState(createSettingsSyncState('checking'));
+
+    void (async () => {
+      try {
+        const result = await fetchRemoteStorefrontSettings(brand, abortController.signal);
+
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setBaselineSettings(result.settings);
+        setFormValues(result.settings);
+        setSyncState(
+          createSettingsSyncState(result.source === 'remote' ? 'remote' : 'local', {
+            updatedAt: result.updatedAt,
+            reason: result.reason,
+          })
+        );
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        const localSettings = readStorefrontSettings(brand);
+        setBaselineSettings(localSettings);
+        setFormValues(localSettings);
+        setSyncState(
+          createSettingsSyncState('local', {
+            reason:
+              error instanceof Error && error.message
+                ? error.message
+                : 'No fue posible consultar la configuracion compartida.',
+          })
+        );
+      } finally {
+        if (!abortController.signal.aborted) {
+          setIsHydrating(false);
+        }
+      }
+    })();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [brand]);
 
   const isDirty = useMemo(() => {
-    return JSON.stringify(formValues) !== JSON.stringify(settings);
-  }, [formValues, settings]);
+    return JSON.stringify(formValues) !== JSON.stringify(baselineSettings);
+  }, [formValues, baselineSettings]);
 
   const updateField = <Key extends keyof StorefrontSettings>(
     field: Key,
@@ -63,7 +391,7 @@ export default function AdminSettings() {
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const siteName = formValues.siteName.trim();
     const slogan = formValues.slogan.trim();
     const logoImageUrl = formValues.logoImageUrl.trim();
@@ -84,8 +412,8 @@ export default function AdminSettings() {
     }
 
     setLoading(true);
-    window.setTimeout(() => {
-      const savedSettings = saveStorefrontSettings(brand, {
+    try {
+      const result = await persistRemoteStorefrontSettings(brand, {
         siteName,
         slogan,
         logoImageUrl,
@@ -101,15 +429,25 @@ export default function AdminSettings() {
         transferInstructions,
       });
 
-      setFormValues(savedSettings);
-      setLoading(false);
+      setBaselineSettings(result.settings);
+      setFormValues(result.settings);
+      setSyncState(
+        createSettingsSyncState(result.source === 'remote' ? 'remote' : 'local', {
+          updatedAt: result.updatedAt,
+          reason: result.reason,
+        })
+      );
       toast.success('Configuracion guardada', {
-        description: `Los cambios de ${brand === 'nikken' ? 'Nikken' : 'Natura'} quedaron guardados en este navegador.`,
+        description:
+          result.source === 'remote'
+            ? `Los cambios de ${brandLabel} quedaron sincronizados para compartirse cuando el backend esta disponible.`
+            : `Guardamos los cambios de ${brandLabel} solo en este navegador porque el backend no respondio.`,
       });
-    }, 300);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const brandLabel = brand === 'nikken' ? 'Nikken' : 'Natura';
   const brandInitials = brandLabel
     .split(' ')
     .map((token) => token[0])
@@ -121,6 +459,29 @@ export default function AdminSettings() {
       ? 'Vista orientativa para la experiencia de bienestar.'
       : 'Vista orientativa para la experiencia de catalogo y compra.';
 
+  if (isHydrating) {
+    return (
+      <AdminLayout>
+        <div className="space-y-6 max-w-4xl">
+          <Card className="border-none shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Cargando configuracion de {brandLabel}</CardTitle>
+              <CardDescription>
+                Estamos consultando los cambios compartidos y la copia local antes de mostrar esta
+                pantalla.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                {syncState.message}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div className="space-y-6 max-w-4xl">
@@ -128,18 +489,41 @@ export default function AdminSettings() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Configuracion del sistema</h1>
             <p className="text-slate-500">
-              Administra la identidad visual y los datos de contacto de {brandLabel}.
+              Administra la identidad visual y los datos de contacto de {brandLabel}. Cuando el
+              backend esta disponible, esta vista intenta cargar y compartir cambios entre
+              dispositivos.
             </p>
           </div>
           <Button
-            onClick={handleSave}
-            disabled={loading || !isDirty}
+            onClick={() => void handleSave()}
+            disabled={loading || !isDirty || isHydrating}
             className="rounded-xl flex items-center gap-2"
           >
             <Save size={18} />
             {loading ? 'Guardando...' : isDirty ? 'Guardar cambios' : 'Sin cambios'}
           </Button>
         </div>
+
+        <Card className="border-none shadow-sm">
+          <CardContent className="flex flex-col gap-2 p-4 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">
+            <div
+              className={`rounded-2xl px-4 py-3 ${
+                syncState.mode === 'remote'
+                  ? 'bg-emerald-50 text-emerald-800'
+                  : syncState.mode === 'local'
+                    ? 'bg-amber-50 text-amber-900'
+                    : 'bg-slate-50 text-slate-600'
+              }`}
+            >
+              {syncState.message}
+            </div>
+            {syncState.updatedAt ? (
+              <p className="text-xs text-slate-400">
+                Ultima respuesta remota: {formatSyncTimestamp(syncState.updatedAt)}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-2">
@@ -265,7 +649,8 @@ export default function AdminSettings() {
                               : 'Si no cargas un logo, la tienda puede usar iniciales o imagotipo simple.'}
                           </p>
                           <p className="text-[11px] text-slate-400">
-                            Esta configuracion queda separada por marca en este navegador.
+                            Esta configuracion sigue separada por marca y ahora intenta sincronizarse
+                            como cambio compartido cuando el backend responde.
                           </p>
                         </div>
                       </div>
@@ -386,15 +771,17 @@ export default function AdminSettings() {
                 <CardHeader>
                   <CardTitle className="text-lg">Notificaciones</CardTitle>
                   <CardDescription>
-                    Estado actual de la tienda administrada desde el navegador.
+                    Estado actual de la sincronizacion administrativa.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4 text-sm text-slate-600">
                   <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4">
-                    La configuracion actual se guarda por marca en este navegador para no mezclar Natura y Nikken.
+                    La copia local sigue separada por marca para no mezclar Natura y Nikken aunque el
+                    backend no este disponible.
                   </div>
                   <div className="rounded-2xl bg-slate-50 p-4">
-                    Siguiente paso sugerido: sincronizar estos cambios con backend para compartirlos entre dispositivos.
+                    Esta pantalla ahora intenta leer y guardar cambios compartidos. Si el backend
+                    falla, te avisaremos y conservaremos el fallback local de este navegador.
                   </div>
                 </CardContent>
               </Card>
@@ -410,11 +797,13 @@ export default function AdminSettings() {
                   <div className="flex items-start gap-3 rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
                     <p>
-                      La sesion mock y la configuracion de la tienda se mantienen aisladas para reducir mezclas entre marcas.
+                      La sesion mock y la configuracion de la tienda se mantienen aisladas por marca,
+                      incluso cuando intentamos sincronizar cambios compartidos.
                     </p>
                   </div>
                   <div className="rounded-2xl bg-slate-50 p-4">
-                    Cuando conectemos autenticacion real, esta vista podra administrar permisos y cambios centralizados.
+                    Con backend disponible, esta vista ya intenta compartir configuraciones. La capa
+                    de permisos reales sigue siendo un siguiente paso aparte.
                   </div>
                 </CardContent>
               </Card>
