@@ -3,7 +3,7 @@ import { Link } from 'wouter';
 import { Navbar } from '@/components/app/layout/Navbar';
 import { Footer } from '@/components/app/layout/Footer';
 import { useBrand } from '@/contexts/BrandContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { AUTH_STORAGE_KEYS, useAuth } from '@/contexts/AuthContext';
 import {
   ArrowLeft,
   RotateCcw,
@@ -23,11 +23,9 @@ import {
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
 
-const AUTH_STORAGE_KEYS = new Set(['odoo_session', 'odoo_mock_user']);
-
 export default function ReturnsPortal() {
   const { brand } = useBrand();
-  const { user } = useAuth();
+  const { user, mockProfiles } = useAuth();
   const isNikken = brand === 'nikken';
   const [storedOrders, setStoredOrders] = useState<StoredOrderRecord[]>([]);
 
@@ -35,6 +33,8 @@ export default function ReturnsPortal() {
   const [orderId, setOrderId] = useState('');
   const [reason, setReason] = useState('Defecto de fabrica');
   const [description, setDescription] = useState('');
+  const activeProfileLabel = user?.name?.trim() || user?.email || 'este perfil';
+  const shouldShowProfileContext = mockProfiles.length > 1 && Boolean(user);
 
   useEffect(() => {
     const loadOrders = () => {
@@ -72,6 +72,7 @@ export default function ReturnsPortal() {
 
   useEffect(() => {
     if (!storedOrders.length) {
+      setOrderId('');
       return;
     }
 
@@ -108,7 +109,8 @@ export default function ReturnsPortal() {
             </div>
             <h2 className="text-3xl font-bold text-slate-900 mb-4 tracking-tight">Solicitud enviada</h2>
             <p className="text-slate-500 mb-4 leading-relaxed">
-              Registramos tu solicitud para el pedido <span className="font-semibold text-slate-700">{orderId || 'sin referencia'}</span>.
+              Registramos tu solicitud para el pedido <span className="font-semibold text-slate-700">{orderId || 'sin referencia'}</span>
+              {shouldShowProfileContext ? ` de ${activeProfileLabel}` : ''}.
             </p>
             <p className="text-slate-500 mb-8 leading-relaxed">
               Un asesor se pondra en contacto contigo en las proximas 24-48 horas habiles para revisar el motivo: <span className="font-medium text-slate-700">{reason}</span>.
@@ -161,7 +163,8 @@ export default function ReturnsPortal() {
               <CardContent className="p-8 space-y-6">
                 {storedOrders.length > 0 && (
                   <div className="rounded-2xl border border-primary/10 bg-primary/5 px-4 py-3 text-sm text-slate-600">
-                    Puedes usar uno de tus pedidos recientes o escribir la referencia manualmente.
+                    Puedes usar uno de tus pedidos recientes o escribir la referencia manualmente
+                    {shouldShowProfileContext ? ` para ${activeProfileLabel}` : ''}.
                   </div>
                 )}
 

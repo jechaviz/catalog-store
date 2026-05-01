@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Navbar } from '@/components/app/layout/Navbar';
 import { Footer } from '@/components/app/layout/Footer';
 import { useBrand } from '@/contexts/BrandContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { AUTH_STORAGE_KEYS, useAuth } from '@/contexts/AuthContext';
 import { Package, Search, Calendar, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/shared/ui/button';
 import { Card, CardContent } from '@/components/shared/ui/card';
@@ -16,8 +16,6 @@ import {
   listOrdersByBrand,
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
-
-const AUTH_STORAGE_KEYS = new Set(['odoo_session', 'odoo_mock_user']);
 
 const orderDateFormatter = new Intl.DateTimeFormat('es-MX', {
   day: 'numeric',
@@ -51,7 +49,7 @@ function getItemsCountLabel(items: StoredOrderRecord['items']) {
 
 export default function OrderHistory() {
   const { brand, isNikken } = useBrand();
-  const { user } = useAuth();
+  const { user, mockProfiles } = useAuth();
   const [orders, setOrders] = useState<StoredOrderRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -59,6 +57,8 @@ export default function OrderHistory() {
   const accountBasePath = isNikken ? '/nikken/account' : '/account';
   const homePath = isNikken ? '/nikken' : '/';
   const normalizedSearch = searchTerm.trim().toLowerCase();
+  const activeProfileLabel = user?.name?.trim() || user?.email || 'este perfil';
+  const shouldShowProfileContext = mockProfiles.length > 1 && Boolean(user);
 
   useEffect(() => {
     const loadOrders = () => {
@@ -104,9 +104,9 @@ export default function OrderHistory() {
   const hasSearch = normalizedSearch.length > 0;
   const summaryText = hasOrders
     ? hasSearch
-      ? `Mostrando ${filteredOrders.length} de ${orders.length} pedidos de ${brandLabel}.`
-      : `Consulta y rastrea tus pedidos recientes de ${brandLabel}.`
-    : `Aun no hay pedidos guardados para ${brandLabel}.`;
+      ? `Mostrando ${filteredOrders.length} de ${orders.length} pedidos de ${brandLabel}${shouldShowProfileContext ? ` para ${activeProfileLabel}` : ''}.`
+      : `Consulta y rastrea tus pedidos recientes de ${brandLabel}${shouldShowProfileContext ? ` para ${activeProfileLabel}` : ''}.`
+    : `Aun no hay pedidos guardados para ${brandLabel}${shouldShowProfileContext ? ` para ${activeProfileLabel}` : ''}.`;
 
   return (
     <div className={`min-h-screen flex flex-col bg-slate-50 ${isNikken ? 'theme-nikken' : ''}`}>

@@ -4,7 +4,7 @@ import { Footer } from '@/components/app/layout/Footer';
 import { Button } from '@/components/shared/ui/button';
 import { Card, CardContent } from '@/components/shared/ui/card';
 import { useBrand } from '@/contexts/BrandContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { AUTH_STORAGE_KEYS, useAuth } from '@/contexts/AuthContext';
 import {
   getCarrierLabel,
   getEstimatedDeliveryLabel,
@@ -24,8 +24,6 @@ import {
   Truck,
 } from 'lucide-react';
 import { Link, useParams } from 'wouter';
-
-const AUTH_STORAGE_KEYS = new Set(['odoo_session', 'odoo_mock_user']);
 
 function formatOrderDate(value: string) {
   const parsedDate = new Date(value);
@@ -50,13 +48,15 @@ function formatCurrency(value: number) {
 
 export default function OrderTracking() {
   const { brand } = useBrand();
-  const { user } = useAuth();
+  const { user, mockProfiles } = useAuth();
   const { id } = useParams();
   const isNikkenRoute =
     typeof window !== 'undefined' && window.location.pathname.startsWith('/nikken');
   const activeBrand = isNikkenRoute ? 'nikken' : brand;
   const isNikken = activeBrand === 'nikken';
   const [order, setOrder] = useState<StoredOrderRecord | null>(null);
+  const activeProfileLabel = user?.name?.trim() || user?.email || 'este perfil';
+  const shouldShowProfileContext = mockProfiles.length > 1 && Boolean(user);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -128,8 +128,8 @@ export default function OrderTracking() {
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Rastreo de Pedido</h1>
             <p className="text-slate-500 mt-2">
               {order
-                ? `Seguimiento en tiempo real de tu envio #${order.id}.`
-                : `No encontramos el pedido #${fallbackOrderId} en ${isNikken ? 'Nikken' : 'Natura'}.`}
+                ? `Seguimiento en tiempo real de tu envio #${order.id}${shouldShowProfileContext ? ` para ${activeProfileLabel}` : ''}.`
+                : `No encontramos el pedido #${fallbackOrderId} en ${isNikken ? 'Nikken' : 'Natura'}${shouldShowProfileContext ? ` para ${activeProfileLabel}` : ''}.`}
             </p>
           </div>
           <div
@@ -153,8 +153,9 @@ export default function OrderTracking() {
               <h2 className="text-2xl font-bold text-slate-900">Pedido no encontrado</h2>
               <p className="text-slate-500 mt-3 max-w-xl mx-auto leading-relaxed">
                 El folio <span className="font-semibold text-slate-700">#{fallbackOrderId}</span>{' '}
-                no esta guardado en el historial de la marca actual. Revisa que estes navegando en
-                la tienda correcta o vuelve a tus pedidos para elegir otro folio.
+                no esta guardado en el historial de la marca actual
+                {shouldShowProfileContext ? ` para ${activeProfileLabel}` : ''}. Revisa que estes
+                navegando en la tienda correcta o vuelve a tus pedidos para elegir otro folio.
               </p>
               <Link href={historyHref}>
                 <Button className="mt-8 rounded-xl px-6">Ir a mis pedidos</Button>

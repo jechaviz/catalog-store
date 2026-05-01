@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { ArrowRight, Heart, Loader2, ShoppingBag, Sparkles } from 'lucide-react';
+import { ArrowRight, Heart, Loader2, ShoppingBag, Sparkles, User as UserIcon } from 'lucide-react';
 import { Navbar } from '@/components/app/layout/Navbar';
 import { Footer } from '@/components/app/layout/Footer';
 import { ProductCard } from '@/components/domain/product/ProductCard';
@@ -50,6 +50,7 @@ export default function Favorites() {
   const accountBasePath = isNikken ? '/nikken/account' : '/account';
   const checkoutPath = isNikken ? '/nikken/checkout' : '/checkout';
   const userId = user?.id ?? null;
+  const activeProfileLabel = user?.name?.trim() || user?.email || 'Perfil activo';
 
   useEffect(() => {
     const syncFavoriteIds = () => {
@@ -156,6 +157,12 @@ export default function Favorites() {
                 <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.3em] text-primary">
                   <Heart className="h-3.5 w-3.5" />
                   Favoritos {brandLabel}
+                </div>
+                <div className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  <UserIcon className="h-4 w-4 text-primary" />
+                  <span className="font-semibold text-slate-900">{activeProfileLabel}</span>
+                  <span className="hidden sm:inline text-slate-300">•</span>
+                  <span>Esta lista pertenece al perfil activo.</span>
                 </div>
                 <h1 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
                   Tu lista guardada por marca activa
@@ -278,6 +285,9 @@ export default function Favorites() {
                 </h2>
                 <p className="mt-2 text-slate-500">
                   Vista filtrada por la marca activa. Puedes abrir el detalle, quitar productos o agregarlos directo al carrito.
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Mostrando lo guardado por <span className="font-semibold text-slate-700">{activeProfileLabel}</span>.
                 </p>
               </div>
               {missingFavoritesCount > 0 ? (

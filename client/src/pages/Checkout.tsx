@@ -28,6 +28,10 @@ export default function Checkout() {
     const { brand, isNikken } = useBrand();
     const storefrontSettings = useStorefrontSettings(brand);
     const hadItemsOnLoad = useRef(items.length > 0);
+    const lastSyncedProfileRef = useRef<{ id: string | null; name: string }>({
+        id: null,
+        name: '',
+    });
     const userId = user?.id ?? null;
 
     const [customerName, setCustomerName] = useState('');
@@ -37,10 +41,24 @@ export default function Checkout() {
     const [isProcessing, setIsProcessing] = useState(false);
 
     useEffect(() => {
-        if (user) {
-            setCustomerName(user.name || '');
+        const nextProfileId = user?.id ?? null;
+        const nextProfileName = user?.name?.trim() || '';
+        const previousProfile = lastSyncedProfileRef.current;
+        const currentName = customerName.trim();
+        const shouldSyncName =
+            previousProfile.id !== nextProfileId ||
+            !currentName ||
+            currentName === previousProfile.name;
+
+        if (shouldSyncName) {
+            setCustomerName(nextProfileName);
         }
-    }, [user]);
+
+        lastSyncedProfileRef.current = {
+            id: nextProfileId,
+            name: nextProfileName,
+        };
+    }, [customerName, user?.id, user?.name]);
 
     useEffect(() => {
         if (!hadItemsOnLoad.current && items.length === 0) {
@@ -57,6 +75,10 @@ export default function Checkout() {
     const sellerPhone = storefrontSettings.sellerPhone || CONFIG.SELLER.PHONE;
     const sellerMessageTemplate =
         storefrontSettings.sellerMessageTemplate?.trim() || 'Hola, me interesa realizar el siguiente pedido:';
+    const activeProfileLabel = user?.name?.trim() || user?.email?.trim() || null;
+    const activeProfileNote = user
+        ? `Perfil activo: ${activeProfileLabel}${user.email ? ` <${user.email}>` : ''}${user.id ? ` [${user.id}]` : ''}`
+        : undefined;
 
     const generateOrderDetails = () => {
         let orderText = `${sellerMessageTemplate}\n\n`;
@@ -145,6 +167,7 @@ export default function Checkout() {
                 items: mapCartItemsToOrderItems(items),
                 carrier: paymentMethod === 'whatsapp_cash' ? 'Confirmacion por WhatsApp' : 'Mensajeria por asignar',
                 trackingNumber: odooOrder?.name ? String(odooOrder.name) : undefined,
+                notes: activeProfileNote,
             }, userId);
 
             clearCart();
@@ -171,6 +194,7 @@ export default function Checkout() {
                 customerAddress,
                 items: mapCartItemsToOrderItems(items),
                 carrier: 'Confirmacion por WhatsApp',
+                notes: activeProfileNote,
             }, userId);
 
             clearCart();
@@ -215,6 +239,11 @@ export default function Checkout() {
                                         placeholder="Ej. Maria Perez"
                                         className="rounded-xl border-border/60 bg-secondary/5 focus-visible:ring-primary/30 h-12"
                                     />
+                                    {activeProfileLabel ? (
+                                        <p className="text-xs text-muted-foreground mt-2 ml-2">
+                                            Este pedido se guardara para el perfil activo: {activeProfileLabel}.
+                                        </p>
+                                    ) : null}
                                 </div>
                                 <div>
                                     <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-2 mb-1 block">

@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
 import { useLocation } from 'wouter';
 import {
+  isLikesStorageKeyForBrand,
   readBrandLikeIds,
   toggleBrandLikeId,
 } from '@/lib/storefrontStorage';
@@ -47,6 +48,9 @@ export default function Home() {
   const { theme } = useTheme();
   const { brand, isNikken } = useBrand();
   const cart = useCart();
+  const userId = user?.id ?? null;
+  const activeProfileLabel = user?.name?.trim() || user?.email || 'tu perfil activo';
+  const [favoriteCount, setFavoriteCount] = useState(0);
 
   // Modal State
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
@@ -68,6 +72,39 @@ export default function Home() {
     }
     loadData();
   }, [brand]);
+
+  useEffect(() => {
+    const syncFavoriteCount = () => {
+      try {
+        setFavoriteCount(readBrandLikeIds(brand, userId).length);
+      } catch {
+        setFavoriteCount(0);
+      }
+    };
+
+    const handleLikesChanged = (event: Event) => {
+      const storageKey = (event as CustomEvent<{ storageKey?: string }>).detail?.storageKey;
+
+      if (!storageKey || isLikesStorageKeyForBrand(storageKey, brand)) {
+        syncFavoriteCount();
+      }
+    };
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (!event.key || isLikesStorageKeyForBrand(event.key, brand)) {
+        syncFavoriteCount();
+      }
+    };
+
+    syncFavoriteCount();
+    window.addEventListener('catalog-likes-changed', handleLikesChanged as EventListener);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('catalog-likes-changed', handleLikesChanged as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [brand, userId]);
 
   if (loading) {
     return (
@@ -146,6 +183,15 @@ export default function Home() {
                 ? 'Líder mundial en bienestar y salud. Descubre cómo el agua, el aire, el descanso y la nutrición pueden cambiar tu vida con tecnología magnética avanzada.' 
                 : 'Explora la línea completa de Natura. Cosméticos y fragancias inspirados en la riqueza de la biodiversidad, creados para cuidar de ti y del planeta.'}
             </p>
+            <div className="mt-6 inline-flex max-w-2xl flex-wrap items-center justify-center gap-2 rounded-2xl border border-primary/10 bg-background/80 px-4 py-3 text-sm text-muted-foreground shadow-sm transition-colors duration-500">
+              <span className="font-semibold text-foreground/90">{activeProfileLabel}</span>
+              <span className="hidden sm:inline text-primary/50">•</span>
+              <span>
+                {favoriteCount} favorito{favoriteCount !== 1 ? 's' : ''} guardado{favoriteCount !== 1 ? 's' : ''} en {isNikken ? 'Nikken' : 'Natura'}
+              </span>
+              <span className="hidden md:inline text-primary/50">•</span>
+              <span className="hidden md:inline">Tus likes y guardados se aplican a este perfil activo.</span>
+            </div>
           </div>
         )}
 
@@ -160,6 +206,9 @@ export default function Home() {
                   : 'Productos Para Ti'}
             </h3>
             <p className="text-sm text-muted-foreground mt-2 ml-4 font-semibold">{filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} encontrado{filteredProducts.length !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-muted-foreground/90 mt-1 ml-4">
+              Perfil activo: <span className="font-semibold text-foreground/80">{activeProfileLabel}</span>
+            </p>
           </div>
 
           {!isNikken && (searchQuery || activeCategory) && (
@@ -224,10 +273,10 @@ export default function Home() {
               cart.addItem(product, 1);
               setSelectedProduct(null); // Close the detail view to show cart
             }}
-            isLiked={selectedProduct ? readBrandLikeIds(brand, user?.id).includes(selectedProduct.id) : false}
+            isLiked={selectedProduct ? readBrandLikeIds(brand, userId).includes(selectedProduct.id) : false}
             onToggleLike={() => {
               if (selectedProduct) {
-                toggleBrandLikeId(brand, selectedProduct.id, user?.id);
+                toggleBrandLikeId(brand, selectedProduct.id, userId);
                 // Force re-render of detail view
                 setSelectedProduct({ ...selectedProduct });
               }

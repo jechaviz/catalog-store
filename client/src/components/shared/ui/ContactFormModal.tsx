@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/shared/ui/dialog';
 import { Button } from '@/components/shared/ui/button';
 import { Input } from '@/components/shared/ui/input';
@@ -26,16 +26,32 @@ export function ContactFormModal({
     const { user } = useAuth();
     const { brand } = useBrand();
     const storefrontSettings = useStorefrontSettings(brand);
+    const lastSyncedProfileRef = useRef<{ id: string | null; name: string }>({
+        id: null,
+        name: '',
+    });
     const [customerName, setCustomerName] = useState(() => user?.name?.trim() || '');
     const [customerLocation, setCustomerLocation] = useState('');
 
     useEffect(() => {
-        const nextName = user?.name?.trim();
+        const nextProfileId = user?.id ?? null;
+        const nextProfileName = user?.name?.trim() || '';
+        const previousProfile = lastSyncedProfileRef.current;
+        const currentName = customerName.trim();
+        const shouldSyncName =
+            previousProfile.id !== nextProfileId ||
+            !currentName ||
+            currentName === previousProfile.name;
 
-        if (nextName) {
-            setCustomerName(currentName => currentName.trim() ? currentName : nextName);
+        if (shouldSyncName) {
+            setCustomerName(nextProfileName);
         }
-    }, [user?.name]);
+
+        lastSyncedProfileRef.current = {
+            id: nextProfileId,
+            name: nextProfileName,
+        };
+    }, [customerName, user?.id, user?.name]);
 
     if (!product) return null;
 
@@ -44,6 +60,7 @@ export function ContactFormModal({
     const fallbackImage = getProductFallbackImage(product.brand || brand);
     const configuredMessageTemplate = storefrontSettings.sellerMessageTemplate.trim();
     const sellerContactPhone = sellerPhone?.trim() || storefrontSettings.sellerPhone || CONFIG.SELLER.PHONE;
+    const activeProfileLabel = user?.name?.trim() || user?.email?.trim() || '';
     const quickHelpCopy = normalizedBrand === 'nikken'
         ? 'Te ayudamos a confirmar disponibilidad y entrega por WhatsApp.'
         : 'Te ayudamos a cerrar tu pedido por WhatsApp.';
@@ -58,7 +75,8 @@ export function ContactFormModal({
         const messageBody = templateWithoutGreeting
             ? `${templateWithoutGreeting} ${productLine}`.trim()
             : `Me interesa ${productLine}`;
-        const message = `${greeting}${messageBody} que vi en el catálogo digital de ${brandName}.${locationInfo}`;
+        const profileReference = activeProfileLabel ? ` Mi perfil activo es ${activeProfileLabel}.` : '';
+        const message = `${greeting}${messageBody} que vi en el catalogo digital de ${brandName}.${locationInfo}${profileReference}`;
 
         window.open(
             `${CONFIG.SELLER.WHATSAPP_BASE_URL}${sellerContactPhone}?text=${encodeURIComponent(message)}`,
@@ -79,7 +97,7 @@ export function ContactFormModal({
             <DialogContent className="max-w-md w-11/12 bg-white/95 backdrop-blur-md rounded-[2rem] p-6 shadow-2xl">
                 <DialogHeader>
                     <DialogTitle className="heading text-xl font-bold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <span>Compra rápida de {brandName}</span>
+                        <span>Compra rapida de {brandName}</span>
                         <span className="text-primary font-mono text-xl">${product.price.toFixed(2)}</span>
                     </DialogTitle>
                 </DialogHeader>
@@ -113,8 +131,13 @@ export function ContactFormModal({
                             onChange={event => setCustomerName(event.target.value)}
                             className="rounded-xl h-12 focus-visible:ring-primary/20 bg-secondary/5"
                         />
+                        {activeProfileLabel ? (
+                            <p className="text-xs text-muted-foreground px-1">
+                                Este contacto se enviara usando el perfil activo: {activeProfileLabel}.
+                            </p>
+                        ) : null}
                         <Input
-                            placeholder="Tu ubicación (opcional)"
+                            placeholder="Tu ubicacion (opcional)"
                             value={customerLocation}
                             onChange={event => setCustomerLocation(event.target.value)}
                             className="rounded-xl h-12 focus-visible:ring-primary/20 bg-secondary/5"
@@ -128,7 +151,7 @@ export function ContactFormModal({
                         >
                             <span className="flex items-center gap-2 font-bold heading">
                                 <MessageCircle className="w-5 h-5" />
-                                WhatsApp rápido
+                                WhatsApp rapido
                             </span>
                             <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition" />
                         </Button>
@@ -140,7 +163,7 @@ export function ContactFormModal({
                             >
                                 <span className="flex items-center gap-2 font-bold heading">
                                     <CreditCard className="w-5 h-5" />
-                                    Pagar en línea
+                                    Pagar en linea
                                 </span>
                                 <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition" />
                             </Button>
