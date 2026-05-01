@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
+  Repeat,
   Search,
   Settings,
   ShoppingBag,
@@ -26,7 +27,12 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from '@/components/shared/ui/dropdown-menu';
 
 interface NavbarProps {
@@ -48,7 +54,7 @@ export function Navbar({
   onCartClick,
   products,
 }: NavbarProps) {
-  const { user, loginWithGoogle, logout } = useAuth();
+  const { user, loginWithGoogle, logout, mockProfiles, switchMockProfile } = useAuth();
   const { brand, isNikken } = useBrand();
   const settings = useStorefrontSettings(brand);
   const [, setLocation] = useLocation();
@@ -59,6 +65,9 @@ export function Navbar({
   const mobileSearchInputId = `${brand}-navbar-mobile-search`;
   const isAdmin = user?.role === 'admin';
   const userId = user?.id ?? null;
+  const profileName = user?.name || user?.email || 'Mi cuenta';
+  const profileInitial = profileName.trim().charAt(0).toUpperCase() || '?';
+  const profileRoleLabel = isAdmin ? 'Admin' : 'Cliente';
 
   useEffect(() => {
     const syncFavoriteCount = () => {
@@ -186,29 +195,124 @@ export function Navbar({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-primary/10 transition-colors relative"
+                  className="flex items-center gap-2 rounded-full border border-primary/10 bg-white/80 py-1 pl-1 pr-2 text-foreground/80 hover:text-primary hover:bg-primary/10 transition-colors relative max-w-[11rem]"
                   title="Mi cuenta"
                 >
-                  <div className="w-6 h-6 rounded-full overflow-hidden border border-primary/30">
+                  <div className="w-7 h-7 rounded-full overflow-hidden border border-primary/30 shrink-0">
                     {user.avatar ? (
                       <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
                     ) : (
-                      <UserIcon className="w-full h-full p-1 bg-secondary/10 text-primary" />
+                      <div className="w-full h-full bg-secondary/10 text-primary flex items-center justify-center text-xs font-bold">
+                        {profileInitial}
+                      </div>
                     )}
+                  </div>
+                  <div className="hidden sm:flex min-w-0 flex-col items-start text-left">
+                    <span className="max-w-full truncate text-xs font-bold text-slate-800">
+                      {profileName}
+                    </span>
+                    <span className="max-w-full truncate text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                      {profileRoleLabel}
+                    </span>
                   </div>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="w-56 rounded-2xl p-2 shadow-2xl border-primary/5"
+                className="w-64 rounded-2xl p-2 shadow-2xl border-primary/5"
               >
                 <DropdownMenuLabel className="px-3 py-2">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
                     Mi cuenta
                   </p>
-                  <p className="text-sm font-bold truncate mt-0.5">{user.name || user.email}</p>
+                  <div className="mt-1 flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/20 bg-secondary/10">
+                      {user.avatar ? (
+                        <img src={user.avatar} alt="Avatar" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-sm font-bold text-primary">{profileInitial}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold truncate">{profileName}</p>
+                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
+                      {profileRoleLabel}
+                    </span>
+                    {mockProfiles.length > 1 ? (
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        {mockProfiles.length} perfiles
+                      </span>
+                    ) : null}
+                  </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-primary/5" />
+                {mockProfiles.length > 1 && (
+                  <>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="rounded-xl gap-3 px-3 py-2 focus:bg-primary/5">
+                        <Repeat className="w-4 h-4 text-primary" />
+                        <span className="font-semibold text-slate-700">Cambiar perfil</span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-60 rounded-2xl p-2">
+                        <DropdownMenuLabel className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                          Perfiles mock
+                        </DropdownMenuLabel>
+                        <DropdownMenuRadioGroup value={user.id}>
+                          {mockProfiles.map((profile) => {
+                            const isActiveProfile = profile.id === user.id;
+                            const displayName = profile.name || profile.email;
+
+                            return (
+                              <DropdownMenuRadioItem
+                                key={profile.id}
+                                value={profile.id}
+                                onSelect={() => switchMockProfile(profile.id)}
+                                className="rounded-xl gap-3 px-3 py-2 cursor-pointer focus:bg-primary/5"
+                              >
+                                <div className="flex min-w-0 flex-1 items-center gap-3">
+                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/20 bg-secondary/10">
+                                    {profile.avatar ? (
+                                      <img
+                                        src={profile.avatar}
+                                        alt={displayName}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    ) : (
+                                      <span className="text-xs font-bold text-primary">
+                                        {displayName.trim().charAt(0).toUpperCase() || '?'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-semibold text-slate-800">
+                                      {displayName}
+                                    </p>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                      {profile.email}
+                                    </p>
+                                  </div>
+                                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600">
+                                    {profile.role === 'admin' ? 'Admin' : 'Cliente'}
+                                  </span>
+                                  {isActiveProfile ? (
+                                    <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-primary">
+                                      Activo
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </DropdownMenuRadioItem>
+                            );
+                          })}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSeparator className="bg-primary/5" />
+                  </>
+                )}
                 <DropdownMenuItem
                   onClick={() => setLocation(isNikken ? '/nikken/profile' : '/profile')}
                   className="rounded-xl mt-1 gap-3 px-3 py-2 cursor-pointer focus:bg-primary/5"

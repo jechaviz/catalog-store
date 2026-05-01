@@ -6,13 +6,26 @@ import {
   Clock,
   LogOut,
   Package,
+  Plus,
   Receipt,
   RefreshCw,
+  Save,
   ShoppingCart,
   Truck,
+  UserCog,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/shared/ui/button';
+import { Input } from '@/components/shared/ui/input';
+import { Label } from '@/components/shared/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/shared/ui/select';
 import { useCart } from '@/hooks/useCart';
 import { useBrand } from '@/contexts/BrandContext';
 import {
@@ -22,6 +35,7 @@ import {
   listOrdersByBrand,
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
+import type { MockProfileInput, User } from '@/contexts/AuthContext';
 
 const currencyFormatter = new Intl.NumberFormat('es-MX', {
   style: 'currency',
@@ -53,13 +67,53 @@ function getOrderItemCount(order: StoredOrderRecord) {
   return order.items.reduce((total, item) => total + item.quantity, 0);
 }
 
+type ProfileDraft = {
+  email: string;
+  name: string;
+  avatar: string;
+  role: 'admin' | 'user';
+};
+
+function buildDraftFromUser(profile?: User | null): ProfileDraft {
+  return {
+    email: profile?.email ?? '',
+    name: profile?.name ?? '',
+    avatar: profile?.avatar ?? '',
+    role: profile?.role === 'admin' ? 'admin' : 'user',
+  };
+}
+
+function sanitizeProfileInput(draft: ProfileDraft): MockProfileInput {
+  return {
+    email: draft.email.trim(),
+    name: draft.name.trim() || undefined,
+    avatar: draft.avatar.trim() || undefined,
+    role: draft.role,
+  };
+}
+
 export default function Profile() {
-  const { user, isLoading, logout } = useAuth();
+  const {
+    user,
+    isLoading,
+    logout,
+    mockProfiles,
+    switchMockProfile,
+    createMockProfile,
+    updateMockProfile,
+  } = useAuth();
   const [, setLocation] = useLocation();
   const { addItem, setIsDrawerOpen } = useCart();
   const { brand, isNikken } = useBrand();
   const [orders, setOrders] = useState<StoredOrderRecord[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [createDraft, setCreateDraft] = useState<ProfileDraft>({
+    email: '',
+    name: '',
+    avatar: '',
+    role: 'user',
+  });
+  const [activeDraft, setActiveDraft] = useState<ProfileDraft>(() => buildDraftFromUser(user));
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -110,6 +164,10 @@ export default function Profile() {
     };
   }, [brand, user]);
 
+  useEffect(() => {
+    setActiveDraft(buildDraftFromUser(user));
+  }, [user]);
+
   if (isLoading || !user) {
     return <div className="min-h-screen flex items-center justify-center">Cargando perfil...</div>;
   }
@@ -122,10 +180,67 @@ export default function Profile() {
     order => order.status === 'pending' || order.status === 'processing' || order.status === 'paid' || order.status === 'shipped'
   ).length;
   const latestOrder = orders[0] || null;
+  const activeProfileName = user.name || user.email;
+  const createEmail = createDraft.email.trim();
+  const canCreateProfile = createEmail.length > 0;
+  const canSaveActiveProfile = activeDraft.email.trim().length > 0;
 
   const handleLogout = () => {
     logout();
     setLocation(basePath || '/');
+  };
+
+  const handleCreateDraftChange = (field: keyof ProfileDraft, value: string) => {
+    setCreateDraft(current => ({ ...current, [field]: value }));
+  };
+
+  const handleActiveDraftChange = (field: keyof ProfileDraft, value: string) => {
+    setActiveDraft(current => ({ ...current, [field]: value }));
+  };
+
+  const handleSwitchProfile = (profileId: string) => {
+    if (profileId === user.id) {
+      return;
+    }
+
+    switchMockProfile(profileId);
+    toast.success('Perfil activo actualizado');
+  };
+
+  const handleCreateProfile = () => {
+    if (!canCreateProfile) {
+      toast.error('Agrega al menos un correo para crear el perfil.');
+      return;
+    }
+
+    const nextProfile = createMockProfile(sanitizeProfileInput(createDraft));
+    setCreateDraft({
+      email: '',
+      name: '',
+      avatar: '',
+      role: 'user',
+    });
+    toast.success('Perfil mock creado', {
+      description: `${nextProfile.name || nextProfile.email} ahora es el perfil activo.`,
+    });
+  };
+
+  const handleSaveActiveProfile = () => {
+    if (!canSaveActiveProfile) {
+      toast.error('El perfil activo necesita un correo valido.');
+      return;
+    }
+
+    const nextProfile = updateMockProfile(user.id, sanitizeProfileInput(activeDraft));
+
+    if (!nextProfile) {
+      toast.error('No pudimos actualizar este perfil.');
+      return;
+    }
+
+    toast.success('Perfil actualizado', {
+      description: `${nextProfile.name || nextProfile.email} quedo guardado en este navegador.`,
+    });
   };
 
   const handleReorder = (order: StoredOrderRecord) => {
@@ -188,7 +303,7 @@ export default function Profile() {
           </div>
           <div className="text-center sm:text-left flex-1">
             <h2 className="display text-3xl font-black text-foreground">
-              {user.name || (isNikken ? 'Cliente Nikken' : 'Cliente Natura')}
+              {activeProfileName || (isNikken ? 'Cliente Nikken' : 'Cliente Natura')}
             </h2>
             <p className="body text-muted-foreground">{user.email}</p>
             <p className="body text-sm text-muted-foreground mt-2">
@@ -205,6 +320,233 @@ export default function Profile() {
             )}
           </div>
         </div>
+
+        <section className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-6 mb-8">
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-primary/10">
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <h3 className="heading text-2xl font-bold flex items-center gap-2">
+                  <Users className="w-6 h-6 text-primary" />
+                  Perfiles mock locales
+                </h3>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Cambia entre perfiles guardados sin perder el historial local de cada usuario.
+                </p>
+              </div>
+              <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                {mockProfiles.length} perfil{mockProfiles.length === 1 ? '' : 'es'}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {mockProfiles.map(profile => {
+                const isActiveProfile = profile.id === user.id;
+
+                return (
+                  <div
+                    key={profile.id}
+                    className={`rounded-3xl border p-4 transition-colors ${
+                      isActiveProfile
+                        ? 'border-primary/30 bg-primary/[0.04]'
+                        : 'border-primary/10 bg-secondary/5'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-bold text-foreground truncate">
+                            {profile.name || profile.email}
+                          </p>
+                          <span className="inline-flex items-center rounded-full bg-secondary/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-foreground">
+                            {profile.role === 'admin' ? 'Admin' : 'Cliente'}
+                          </span>
+                          {isActiveProfile ? (
+                            <span className="inline-flex items-center rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white">
+                              Activo
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-sm text-muted-foreground truncate mt-1">{profile.email}</p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          ID local: {profile.id}
+                        </p>
+                      </div>
+
+                      <Button
+                        variant={isActiveProfile ? 'outline' : 'default'}
+                        className="rounded-full"
+                        onClick={() => handleSwitchProfile(profile.id)}
+                        disabled={isActiveProfile}
+                      >
+                        {isActiveProfile ? 'Perfil en uso' : 'Usar este perfil'}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-primary/10">
+            <div className="mb-5">
+              <h3 className="heading text-2xl font-bold flex items-center gap-2">
+                <Plus className="w-6 h-6 text-primary" />
+                Crear perfil rapido
+              </h3>
+              <p className="text-sm text-muted-foreground mt-2">
+                Agrega un perfil nuevo y quedara activo de inmediato en este navegador.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-profile-name">Nombre</Label>
+                <Input
+                  id="new-profile-name"
+                  value={createDraft.name}
+                  onChange={event => handleCreateDraftChange('name', event.target.value)}
+                  placeholder="Ej. Ana Consultora"
+                  className="rounded-2xl"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-profile-email">Correo</Label>
+                <Input
+                  id="new-profile-email"
+                  type="email"
+                  value={createDraft.email}
+                  onChange={event => handleCreateDraftChange('email', event.target.value)}
+                  placeholder="ana@ejemplo.com"
+                  className="rounded-2xl"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-profile-avatar">Avatar URL opcional</Label>
+                <Input
+                  id="new-profile-avatar"
+                  value={createDraft.avatar}
+                  onChange={event => handleCreateDraftChange('avatar', event.target.value)}
+                  placeholder="https://..."
+                  className="rounded-2xl"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Rol</Label>
+                <Select
+                  value={createDraft.role}
+                  onValueChange={value => handleCreateDraftChange('role', value as ProfileDraft['role'])}
+                >
+                  <SelectTrigger className="rounded-2xl">
+                    <SelectValue placeholder="Selecciona un rol" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">Cliente</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                className="w-full rounded-full"
+                onClick={handleCreateProfile}
+                disabled={!canCreateProfile}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Crear y activar perfil
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-primary/10 mb-10">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-6">
+            <div>
+              <h3 className="heading text-2xl font-bold flex items-center gap-2">
+                <UserCog className="w-6 h-6 text-primary" />
+                Editar perfil activo
+              </h3>
+              <p className="text-sm text-muted-foreground mt-2">
+                Ajusta el perfil que esta usando el resumen de pedidos actual.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-secondary/10 px-4 py-3 text-sm text-muted-foreground">
+              Perfil actual: <span className="font-semibold text-foreground">{activeProfileName}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="active-profile-name">Nombre</Label>
+              <Input
+                id="active-profile-name"
+                value={activeDraft.name}
+                onChange={event => handleActiveDraftChange('name', event.target.value)}
+                placeholder="Tu nombre visible"
+                className="rounded-2xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="active-profile-email">Correo</Label>
+              <Input
+                id="active-profile-email"
+                type="email"
+                value={activeDraft.email}
+                onChange={event => handleActiveDraftChange('email', event.target.value)}
+                placeholder="tu@correo.com"
+                className="rounded-2xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="active-profile-avatar">Avatar URL</Label>
+              <Input
+                id="active-profile-avatar"
+                value={activeDraft.avatar}
+                onChange={event => handleActiveDraftChange('avatar', event.target.value)}
+                placeholder="https://..."
+                className="rounded-2xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Rol</Label>
+              <Select
+                value={activeDraft.role}
+                onValueChange={value => handleActiveDraftChange('role', value as ProfileDraft['role'])}
+              >
+                <SelectTrigger className="rounded-2xl">
+                  <SelectValue placeholder="Selecciona un rol" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Cliente</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 mt-6">
+            <Button
+              className="rounded-full"
+              onClick={handleSaveActiveProfile}
+              disabled={!canSaveActiveProfile}
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Guardar cambios
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={() => setActiveDraft(buildDraftFromUser(user))}
+            >
+              Restablecer formulario
+            </Button>
+          </div>
+        </section>
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
           <div className="bg-white rounded-3xl p-6 border border-primary/10 shadow-sm">
