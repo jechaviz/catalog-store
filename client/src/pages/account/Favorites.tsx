@@ -8,6 +8,7 @@ import { Button } from '@/components/shared/ui/button';
 import { Card, CardContent } from '@/components/shared/ui/card';
 import { useBrand } from '@/contexts/BrandContext';
 import { useCart } from '@/hooks/useCart';
+import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import { fetchCatalogData, type CatalogData, type CatalogProduct } from '@/lib/dataFetcher';
 import { readBrandLikeIds, toggleBrandLikeId } from '@/lib/storefrontStorage';
 
@@ -23,10 +24,15 @@ const CartDrawer = lazy(() =>
   }))
 );
 
-const SELLER_PHONE = '5215573456073';
+const ContactFormModal = lazy(() =>
+  import('@/components/shared/ui/ContactFormModal').then((module) => ({
+    default: module.ContactFormModal,
+  }))
+);
 
 export default function Favorites() {
   const { brand, isNikken } = useBrand();
+  const storefrontSettings = useStorefrontSettings(brand);
   const cart = useCart();
   const [, setLocation] = useLocation();
 
@@ -35,6 +41,7 @@ export default function Favorites() {
   const [loading, setLoading] = useState(true);
   const [hasLoadError, setHasLoadError] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
+  const [quickBuyProduct, setQuickBuyProduct] = useState<CatalogProduct | null>(null);
 
   const brandLabel = isNikken ? 'Nikken' : 'Natura';
   const homePath = isNikken ? '/nikken' : '/';
@@ -107,14 +114,6 @@ export default function Favorites() {
   }, [data, favoriteIds]);
 
   const missingFavoritesCount = Math.max(favoriteIds.length - favoriteProducts.length, 0);
-
-  const handleQuickBuy = (product: CatalogProduct) => {
-    const message = encodeURIComponent(
-      `Hola, me interesa ${product.name} de ${brandLabel}. Lo vi en mis favoritos y quiero mas informacion.`
-    );
-
-    window.open(`https://wa.me/${SELLER_PHONE}?text=${message}`, '_blank', 'noopener,noreferrer');
-  };
 
   const heroCopy = isNikken
     ? 'Guarda tus sistemas y esenciales de bienestar para retomarlos cuando quieras.'
@@ -277,7 +276,7 @@ export default function Favorites() {
                   key={product.id}
                   product={product}
                   onViewDetail={setSelectedProduct}
-                  onQuickBuy={handleQuickBuy}
+                  onQuickBuy={setQuickBuyProduct}
                   onAddToCart={(currentProduct) => cart.addItem(currentProduct, 1)}
                 />
               ))}
@@ -295,6 +294,17 @@ export default function Favorites() {
               cart.setIsDrawerOpen(false);
               setLocation(checkoutPath);
             }}
+          />
+        </Suspense>
+      ) : null}
+
+      {quickBuyProduct ? (
+        <Suspense fallback={null}>
+          <ContactFormModal
+            product={quickBuyProduct}
+            isOpen={!!quickBuyProduct}
+            onClose={() => setQuickBuyProduct(null)}
+            sellerPhone={storefrontSettings.sellerPhone}
           />
         </Suspense>
       ) : null}

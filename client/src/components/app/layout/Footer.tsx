@@ -3,12 +3,14 @@ import { useLocation } from 'wouter';
 import { Send, Phone } from 'lucide-react';
 import { CONFIG } from '@/config';
 import { useBrand } from '@/contexts/BrandContext';
+import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import { Button } from '@/components/shared/ui/button';
 import { Input } from '@/components/shared/ui/input';
 
 export function Footer() {
     const [phone, setPhone] = useState('');
-    const { isNikken } = useBrand();
+    const { brand, isNikken } = useBrand();
+    const { sellerPhone } = useStorefrontSettings(brand);
     const [, setLocation] = useLocation();
 
     const brandName = isNikken ? 'Nikken' : 'Natura';
@@ -38,7 +40,7 @@ export function Footer() {
         );
 
         window.open(
-            `${CONFIG.SELLER.WHATSAPP_BASE_URL}${CONFIG.SELLER.PHONE}?text=${message}`,
+            `${CONFIG.SELLER.WHATSAPP_BASE_URL}${sellerPhone}?text=${message}`,
             '_blank'
         );
         setPhone('');

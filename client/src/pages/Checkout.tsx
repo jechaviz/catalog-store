@@ -11,6 +11,7 @@ import { client as odooClient } from '@/lib/odoo';
 import { CREATE_ORDER } from '@/lib/odooQueries';
 import { CONFIG } from '@/config';
 import { useBrand } from '@/contexts/BrandContext';
+import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import { getProductFallbackImage } from '@/lib/storefrontStorage';
 import {
     createFallbackOrderId,
@@ -25,6 +26,7 @@ export default function Checkout() {
     const [, setLocation] = useLocation();
     const { user } = useAuth();
     const { brand, isNikken } = useBrand();
+    const storefrontSettings = useStorefrontSettings(brand);
     const hadItemsOnLoad = useRef(items.length > 0);
 
     const [customerName, setCustomerName] = useState('');
@@ -51,9 +53,13 @@ export default function Checkout() {
 
     const shippingCost = subtotal > CONFIG.SHIPPING.FREE_THRESHOLD ? 0 : CONFIG.SHIPPING.DEFAULT_COST;
     const total = subtotal + shippingCost;
+    const sellerPhone = storefrontSettings.sellerPhone || CONFIG.SELLER.PHONE;
+    const sellerMessageTemplate =
+        storefrontSettings.sellerMessageTemplate?.trim() || 'Hola, me interesa realizar el siguiente pedido:';
 
     const generateOrderDetails = () => {
-        let orderText = '*NUEVO PEDIDO DIGITAL*\n\n';
+        let orderText = `${sellerMessageTemplate}\n\n`;
+        orderText += '*NUEVO PEDIDO DIGITAL*\n\n';
         orderText += `*Cliente:* ${customerName}\n`;
         orderText += `*Telefono:* ${customerPhone}\n`;
         orderText += `*Direccion:* ${customerAddress}\n\n`;
@@ -69,7 +75,7 @@ export default function Checkout() {
 
     const openWhatsApp = (message: string) => {
         window.open(
-            `${CONFIG.SELLER.WHATSAPP_BASE_URL}${CONFIG.SELLER.PHONE}?text=${encodeURIComponent(message)}`,
+            `${CONFIG.SELLER.WHATSAPP_BASE_URL}${sellerPhone}?text=${encodeURIComponent(message)}`,
             '_blank'
         );
     };

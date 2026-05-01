@@ -6,6 +6,7 @@ import { MessageCircle, CreditCard, ChevronRight } from 'lucide-react';
 import { CONFIG } from '@/config';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
+import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import type { CatalogProduct } from '@/lib/dataFetcher';
 import { getProductFallbackImage } from '@/lib/storefrontStorage';
 
@@ -20,10 +21,11 @@ export function ContactFormModal({
     product,
     isOpen,
     onClose,
-    sellerPhone = CONFIG.SELLER.PHONE,
+    sellerPhone,
 }: ContactFormModalProps) {
     const { user } = useAuth();
     const { brand } = useBrand();
+    const storefrontSettings = useStorefrontSettings(brand);
     const [customerName, setCustomerName] = useState(() => user?.name?.trim() || '');
     const [customerLocation, setCustomerLocation] = useState('');
 
@@ -40,7 +42,8 @@ export function ContactFormModal({
     const brandName = product.brand?.trim() || (brand === 'nikken' ? 'Nikken' : 'Natura');
     const normalizedBrand = brandName.toLowerCase();
     const fallbackImage = getProductFallbackImage(product.brand || brand);
-    const sellerContactPhone = sellerPhone?.trim() || CONFIG.SELLER.PHONE;
+    const configuredMessageTemplate = storefrontSettings.sellerMessageTemplate.trim();
+    const sellerContactPhone = sellerPhone?.trim() || storefrontSettings.sellerPhone || CONFIG.SELLER.PHONE;
     const quickHelpCopy = normalizedBrand === 'nikken'
         ? 'Te ayudamos a confirmar disponibilidad y entrega por WhatsApp.'
         : 'Te ayudamos a cerrar tu pedido por WhatsApp.';
@@ -48,7 +51,14 @@ export function ContactFormModal({
     const handleWhatsAppOrder = () => {
         const greeting = customerName.trim() ? `Hola, soy ${customerName.trim()}. ` : 'Hola. ';
         const locationInfo = customerLocation.trim() ? ` Vivo en ${customerLocation.trim()}.` : '';
-        const message = `${greeting}Me interesa el producto *${product.name}* de *${brandName}* por $${product.price.toFixed(2)} que vi en el catálogo digital de ${brandName}.${locationInfo}`;
+        const templateWithoutGreeting = configuredMessageTemplate
+            .replace(/^hola[\s,.!¡¿?]*/i, '')
+            .trim();
+        const productLine = `el producto *${product.name}* de *${brandName}* por $${product.price.toFixed(2)}`;
+        const messageBody = templateWithoutGreeting
+            ? `${templateWithoutGreeting} ${productLine}`.trim()
+            : `Me interesa ${productLine}`;
+        const message = `${greeting}${messageBody} que vi en el catálogo digital de ${brandName}.${locationInfo}`;
 
         window.open(
             `${CONFIG.SELLER.WHATSAPP_BASE_URL}${sellerContactPhone}?text=${encodeURIComponent(message)}`,

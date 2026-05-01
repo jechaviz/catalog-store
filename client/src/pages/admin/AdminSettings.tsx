@@ -1,119 +1,294 @@
-import React, { useState } from 'react';
-import AdminLayout from '@/components/app/admin/AdminLayout';
-import { useBrand } from '@/contexts/BrandContext';
-import { 
-  Settings, 
-  Globe, 
-  Palette, 
-  MessageSquare, 
-  Save, 
-  Image as ImageIcon,
+import { useEffect, useMemo, useState } from 'react';
+import {
   Bell,
-  ShieldCheck
+  CheckCircle2,
+  Globe,
+  Image as ImageIcon,
+  MessageSquare,
+  Palette,
+  Save,
+  Settings,
+  ShieldCheck,
 } from 'lucide-react';
-import { Button } from '@/components/shared/ui/button';
-import { Input } from '@/components/shared/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/shared/ui/card';
 import { toast } from 'sonner';
+import AdminLayout from '@/components/app/admin/AdminLayout';
+import { Button } from '@/components/shared/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/shared/ui/card';
+import { Input } from '@/components/shared/ui/input';
+import { Textarea } from '@/components/shared/ui/textarea';
+import { useBrand } from '@/contexts/BrandContext';
+import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
+import {
+  normalizeSellerPhone,
+  saveStorefrontSettings,
+  type StorefrontSettings,
+} from '@/lib/storefrontSettings';
 
+type SettingsSection = 'general' | 'appearance' | 'communications' | 'notifications' | 'security';
+
+const SECTION_BUTTONS: Array<{
+  id: SettingsSection;
+  label: string;
+  icon: typeof Globe;
+}> = [
+  { id: 'general', label: 'General', icon: Globe },
+  { id: 'appearance', label: 'Apariencia', icon: Palette },
+  { id: 'communications', label: 'Comunicaciones', icon: MessageSquare },
+  { id: 'notifications', label: 'Notificaciones', icon: Bell },
+  { id: 'security', label: 'Seguridad', icon: ShieldCheck },
+];
 
 export default function AdminSettings() {
   const { brand } = useBrand();
+  const settings = useStorefrontSettings(brand);
   const [loading, setLoading] = useState(false);
+  const [activeSection, setActiveSection] = useState<SettingsSection>('general');
+  const [formValues, setFormValues] = useState<StorefrontSettings>(settings);
 
+  useEffect(() => {
+    setFormValues(settings);
+  }, [settings]);
+
+  const isDirty = useMemo(() => {
+    return JSON.stringify(formValues) !== JSON.stringify(settings);
+  }, [formValues, settings]);
+
+  const updateField = <Key extends keyof StorefrontSettings>(
+    field: Key,
+    value: StorefrontSettings[Key]
+  ) => {
+    setFormValues((currentValues) => ({
+      ...currentValues,
+      [field]: value,
+    }));
+  };
 
   const handleSave = () => {
+    const siteName = formValues.siteName.trim();
+    const slogan = formValues.slogan.trim();
+    const sellerMessageTemplate = formValues.sellerMessageTemplate.trim();
+    const sellerPhone = normalizeSellerPhone(formValues.sellerPhone);
+
+    if (!siteName || !slogan || !sellerMessageTemplate) {
+      toast.error('Completa el nombre del sitio, el slogan y el mensaje base del vendedor.');
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast("Configuración guardada", {
-        description: "Los cambios para " + brand + " se han guardado correctamente.",
+    window.setTimeout(() => {
+      const savedSettings = saveStorefrontSettings(brand, {
+        siteName,
+        slogan,
+        sellerPhone,
+        sellerMessageTemplate,
       });
 
-    }, 1000);
+      setFormValues(savedSettings);
+      setLoading(false);
+      toast.success('Configuracion guardada', {
+        description: `Los cambios de ${brand === 'nikken' ? 'Nikken' : 'Natura'} quedaron guardados en este navegador.`,
+      });
+    }, 300);
   };
+
+  const brandLabel = brand === 'nikken' ? 'Nikken' : 'Natura';
+  const previewDescription =
+    brand === 'nikken'
+      ? 'Vista orientativa para la experiencia de bienestar.'
+      : 'Vista orientativa para la experiencia de catalogo y compra.';
 
   return (
     <AdminLayout>
       <div className="space-y-6 max-w-4xl">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Configuración del Sistema</h1>
-            <p className="text-slate-500">Administra la identidad visual y parámetros de {brand}.</p>
+            <h1 className="text-2xl font-bold text-slate-900">Configuracion del sistema</h1>
+            <p className="text-slate-500">
+              Administra la identidad visual y los datos de contacto de {brandLabel}.
+            </p>
           </div>
-          <Button onClick={handleSave} disabled={loading} className="rounded-xl flex items-center gap-2">
+          <Button
+            onClick={handleSave}
+            disabled={loading || !isDirty}
+            className="rounded-xl flex items-center gap-2"
+          >
             <Save size={18} />
-            {loading ? 'Guardando...' : 'Guardar Cambios'}
+            {loading ? 'Guardando...' : isDirty ? 'Guardar cambios' : 'Sin cambios'}
           </Button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Sidebar Nav (Mini) */}
           <div className="space-y-2">
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/10 text-primary font-bold text-sm">
-              <Globe size={18} /> General
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-50 text-slate-500 font-medium text-sm transition-colors">
-              <Palette size={18} /> Apariencia
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-50 text-slate-500 font-medium text-sm transition-colors">
-              <MessageSquare size={18} /> Comunicaciones
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-50 text-slate-500 font-medium text-sm transition-colors">
-              <Bell size={18} /> Notificaciones
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-50 text-slate-500 font-medium text-sm transition-colors">
-              <ShieldCheck size={18} /> Seguridad
-            </button>
+            {SECTION_BUTTONS.map((section) => {
+              const Icon = section.icon;
+              const isActive = activeSection === section.id;
+
+              return (
+                <button
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
+                    isActive
+                      ? 'bg-primary/10 text-primary font-bold'
+                      : 'hover:bg-slate-50 text-slate-500 font-medium'
+                  }`}
+                >
+                  <Icon size={18} />
+                  {section.label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Form Area */}
           <div className="md:col-span-2 space-y-6">
-            <Card className="border-none shadow-sm h-fit">
-              <CardHeader>
-                <CardTitle className="text-lg">Identidad de Marca</CardTitle>
-                <CardDescription>Define cómo se presenta tu tienda a los clientes.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 gap-4">
+            {(activeSection === 'general' || activeSection === 'appearance') && (
+              <Card className="border-none shadow-sm h-fit">
+                <CardHeader>
+                  <CardTitle className="text-lg">Identidad de marca</CardTitle>
+                  <CardDescription>
+                    Define como se presenta tu tienda a los clientes.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Nombre del Sitio</label>
-                    <Input defaultValue={brand === 'nikken' ? 'Nikken Wellness Store' : 'Natura Catálogo'} className="rounded-xl border-slate-200" />
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Nombre del sitio
+                    </label>
+                    <Input
+                      value={formValues.siteName}
+                      onChange={(event) => updateField('siteName', event.target.value)}
+                      className="rounded-xl border-slate-200"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Lema / Slogan</label>
-                    <Input defaultValue={brand === 'nikken' ? 'Descubre el bienestar con tecnología magnética' : 'Belleza que cuida de ti'} className="rounded-xl border-slate-200" />
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Lema o slogan
+                    </label>
+                    <Input
+                      value={formValues.slogan}
+                      onChange={(event) => updateField('slogan', event.target.value)}
+                      className="rounded-xl border-slate-200"
+                    />
                   </div>
-                </div>
-                <div className="pt-4 border-t border-slate-100 mt-4">
-                   <p className="text-sm font-bold text-slate-800 mb-4">Logotipo Principal</p>
-                   <div className="flex items-center gap-6">
+                  <div className="pt-4 border-t border-slate-100 mt-4">
+                    <p className="text-sm font-bold text-slate-800 mb-4">Logotipo principal</p>
+                    <div className="flex items-center gap-6">
                       <div className="w-20 h-20 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 group hover:border-primary/50 cursor-pointer transition-colors">
-                         <ImageIcon size={24} />
+                        <ImageIcon size={24} />
                       </div>
                       <div className="space-y-1">
-                        <Button variant="outline" size="sm" className="rounded-lg h-8 text-xs">Subir nuevo logo</Button>
-                        <p className="text-[10px] text-slate-400">Recomendado: SVG o PNG Transparente (512x512)</p>
+                        <Button variant="outline" size="sm" className="rounded-lg h-8 text-xs" disabled>
+                          Proximamente
+                        </Button>
+                        <p className="text-[10px] text-slate-400">
+                          Reservamos este espacio para conectar la subida de logo despues.
+                        </p>
                       </div>
-                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === 'communications' && (
+              <Card className="border-none shadow-sm h-fit">
+                <CardHeader>
+                  <CardTitle className="text-lg">Configuracion de ventas</CardTitle>
+                  <CardDescription>
+                    Parametros para pedidos y contacto por WhatsApp.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      WhatsApp del vendedor
+                    </label>
+                    <Input
+                      value={formValues.sellerPhone}
+                      onChange={(event) => updateField('sellerPhone', event.target.value)}
+                      className="rounded-xl border-slate-200"
+                    />
+                    <p className="text-[10px] text-slate-400">
+                      Usa formato internacional sin espacios. Guardamos un valor compatible con enlaces `wa.me`.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Mensaje predeterminado
+                    </label>
+                    <Textarea
+                      value={formValues.sellerMessageTemplate}
+                      onChange={(event) => updateField('sellerMessageTemplate', event.target.value)}
+                      className="rounded-xl border-slate-200 min-h-[110px]"
+                    />
+                    <p className="text-[10px] text-slate-400">
+                      Este texto base se puede reutilizar en compra rapida y solicitudes por WhatsApp.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === 'notifications' && (
+              <Card className="border-none shadow-sm h-fit">
+                <CardHeader>
+                  <CardTitle className="text-lg">Notificaciones</CardTitle>
+                  <CardDescription>
+                    Estado actual de la tienda administrada desde el navegador.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm text-slate-600">
+                  <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4">
+                    La configuracion actual se guarda por marca en este navegador para no mezclar Natura y Nikken.
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    Siguiente paso sugerido: sincronizar estos cambios con backend para compartirlos entre dispositivos.
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === 'security' && (
+              <Card className="border-none shadow-sm h-fit">
+                <CardHeader>
+                  <CardTitle className="text-lg">Seguridad</CardTitle>
+                  <CardDescription>Resumen operativo del entorno actual.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm text-slate-600">
+                  <div className="flex items-start gap-3 rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+                    <p>
+                      La sesion mock y la configuracion de la tienda se mantienen aisladas para reducir mezclas entre marcas.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    Cuando conectemos autenticacion real, esta vista podra administrar permisos y cambios centralizados.
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <Card className="border-none shadow-sm h-fit">
-              <CardHeader>
-                <CardTitle className="text-lg">Configuración de Ventas</CardTitle>
-                <CardDescription>Parámetros para pedidos y contacto por WhatsApp.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">WhatsApp del Vendedor</label>
-                  <Input defaultValue="+525512345678" className="rounded-xl border-slate-200" />
-                  <p className="text-[10px] text-slate-400">Este número recibirá los pedidos de forma directa.</p>
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-lg">Preview rapida</CardTitle>
+                  <CardDescription>{previewDescription}</CardDescription>
                 </div>
-                <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Mensaje Predeterminado</label>
-                    <Input defaultValue="Hola, me interesa realizar el siguiente pedido:" className="rounded-xl border-slate-200" />
+                <Settings className="w-5 h-5 text-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-[1.75rem] border border-primary/10 bg-white p-6 shadow-sm">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-primary">
+                    {brandLabel}
+                  </p>
+                  <h2 className="mt-3 text-2xl font-bold text-slate-900">{formValues.siteName}</h2>
+                  <p className="mt-2 text-slate-500">{formValues.slogan}</p>
+                  <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                    WhatsApp activo:{' '}
+                    <span className="font-semibold text-slate-900">
+                      {normalizeSellerPhone(formValues.sellerPhone)}
+                    </span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
