@@ -2,7 +2,17 @@ import type { CatalogProduct } from '@/lib/dataFetcher';
 
 type ExportProduct = Pick<
   CatalogProduct,
-  'id' | 'name' | 'description' | 'price' | 'imageUrl' | 'brand' | 'subBrand' | 'inStock'
+  | 'id'
+  | 'name'
+  | 'description'
+  | 'price'
+  | 'imageUrl'
+  | 'brand'
+  | 'subBrand'
+  | 'inStock'
+  | 'benefits'
+  | 'deliveryTime'
+  | 'deliveryMethods'
 >;
 
 const EXPORT_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
@@ -12,11 +22,20 @@ const EXPORT_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
 });
 
 function getExportBrandLabel(products: ExportProduct[]) {
-  return (products[0]?.brand || 'Catalogo').replace(/\s+/g, '_');
+  const uniqueBrands = Array.from(
+    new Set(products.map((product) => normalizeExportText(product.brand)).filter(Boolean))
+  );
+
+  if (uniqueBrands.length !== 1) {
+    return 'Catalogo_Multimarca';
+  }
+
+  return uniqueBrands[0].replace(/\s+/g, '_');
 }
 
 function getCatalogLink(product: ExportProduct) {
-  const basePath = product.brand.toLowerCase() === 'nikken' ? '/nikken' : '';
+  const normalizedBrand = normalizeExportText(product.brand).toLowerCase();
+  const basePath = normalizedBrand === 'nikken' ? '/nikken' : '';
   return `${window.location.origin}${basePath}?p=${product.id}`;
 }
 
@@ -29,6 +48,81 @@ function normalizeExportText(value: string | number | null | undefined) {
     .replace(/\r?\n|\r/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function clampText(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return value.slice(0, maxLength).trimEnd();
+}
+
+function buildMarketplaceTitle(product: ExportProduct, maxLength?: number) {
+  const productName = normalizeExportText(product.name);
+  const nameLower = productName.toLowerCase();
+  const brand = normalizeExportText(product.brand);
+  const subBrand = normalizeExportText(product.subBrand);
+  const titleParts: string[] = [];
+
+  if (brand && !nameLower.includes(brand.toLowerCase())) {
+    titleParts.push(brand);
+  }
+
+  if (subBrand && !nameLower.includes(subBrand.toLowerCase())) {
+    titleParts.push(subBrand);
+  }
+
+  if (productName) {
+    titleParts.push(productName);
+  }
+
+  const title = titleParts.join(' ').trim() || product.id;
+  return typeof maxLength === 'number' ? clampText(title, maxLength) : title;
+}
+
+function buildMarketplaceDescription(product: ExportProduct) {
+  const description = normalizeExportText(product.description);
+  const details: string[] = [];
+  const brand = normalizeExportText(product.brand);
+  const subBrand = normalizeExportText(product.subBrand);
+  const benefits = (Array.isArray(product.benefits) ? product.benefits : [])
+    .map((benefit) => normalizeExportText(benefit))
+    .filter(Boolean)
+    .slice(0, 4);
+  const deliveryMethods = (Array.isArray(product.deliveryMethods) ? product.deliveryMethods : [])
+    .map((method) => normalizeExportText(method))
+    .filter(Boolean)
+    .slice(0, 3);
+  const deliveryTime = normalizeExportText(product.deliveryTime);
+
+  if (brand) {
+    details.push(`Marca: ${brand}.`);
+  }
+
+  if (subBrand) {
+    details.push(`Linea: ${subBrand}.`);
+  }
+
+  details.push(`Disponibilidad: ${product.inStock ? 'Disponible' : 'Agotado'}.`);
+
+  if (benefits.length > 0) {
+    details.push(`Beneficios: ${benefits.join('; ')}.`);
+  }
+
+  if (deliveryTime) {
+    details.push(`Entrega estimada: ${deliveryTime}.`);
+  }
+
+  if (deliveryMethods.length > 0) {
+    details.push(`Entrega por: ${deliveryMethods.join(', ')}.`);
+  }
+
+  return [description, ...details].filter(Boolean).join(' ').trim();
+}
+
+function getExportQuantity(product: ExportProduct) {
+  return product.inStock ? 1 : 0;
 }
 
 function quoteCsvCell(value: string | number | null | undefined) {
@@ -111,7 +205,7 @@ export async function triggerSocialShare(data: {
 
 /**
  * Generates a CSV for WhatsApp Business Catalog upload.
- * Format based on Meta's required headers.
+ * Category is left empty unless a real mapping exists.
  */
 export function generateWhatsAppCsv(products: ExportProduct[]) {
   const headers = [
@@ -124,25 +218,25 @@ export function generateWhatsAppCsv(products: ExportProduct[]) {
     'link',
     'image_link',
     'brand',
-    'google_product_category'
+    'google_product_category',
   ];
 
-  const rows = products.map(p => [
-    p.id,
-    p.name,
-    p.description,
-    p.inStock ? 'in stock' : 'out of stock',
+  const rows = products.map((product) => [
+    product.id,
+    buildMarketplaceTitle(product),
+    buildMarketplaceDescription(product),
+    product.inStock ? 'in stock' : 'out of stock',
     'new',
-    `${p.price} MXN`,
-    getCatalogLink(p),
-    p.imageUrl,
-    p.brand,
-    'Health & Beauty > Personal Care > Cosmetics'
+    `${product.price} MXN`,
+    getCatalogLink(product),
+    product.imageUrl,
+    normalizeExportText(product.brand),
+    '',
   ]);
 
   const csvContent = [
     headers.join(','),
-    ...rows.map(row => row.map(quoteCsvCell).join(','))
+    ...rows.map((row) => row.map(quoteCsvCell).join(',')),
   ].join('\n');
 
   downloadTextFile(
@@ -154,37 +248,41 @@ export function generateWhatsAppCsv(products: ExportProduct[]) {
 
 /**
  * Generates a CSV for Mercado Libre bulk upload review.
- * Marketplace-specific identifiers remain blank on purpose.
+ * Category and marketplace identifiers remain blank until they are known.
  */
 export function generateMercadoLibreCsv(products: ExportProduct[]) {
   const headers = [
-    'Título',
+    'Titulo',
     'Precio',
     'Stock',
-    'Categoría',
-    'Descripción',
+    'Categoria',
+    'Descripcion',
     'URL de Imagen',
     'Marca',
     'Modelo',
-    'EAN/UPC'
+    'SKU vendedor',
+    'EAN/UPC',
   ];
 
-  const rows = products.map(p => [
-    p.name,
-    p.price,
-    p.inStock ? 10 : 0,
+  const rows = products.map((product) => [
+    buildMarketplaceTitle(product),
+    product.price,
+    getExportQuantity(product),
     '',
-    p.description,
-    p.imageUrl,
-    p.brand,
-    p.subBrand || '',
-    ''
+    buildMarketplaceDescription(product),
+    product.imageUrl,
+    normalizeExportText(product.brand),
+    normalizeExportText(product.subBrand),
+    product.id,
+    '',
   ]);
 
-  const csvContent = '\uFEFF' + [
-    headers.join(','),
-    ...rows.map(row => row.map(quoteCsvCell).join(','))
-  ].join('\n');
+  const csvContent =
+    '\uFEFF' +
+    [
+      headers.join(','),
+      ...rows.map((row) => row.map(quoteCsvCell).join(',')),
+    ].join('\n');
 
   downloadTextFile(
     csvContent,
@@ -206,29 +304,31 @@ export function generateEbayCsv(products: ExportProduct[]) {
     'Price',
     'Quantity',
     'PicURL',
+    'CustomLabel',
     'ConditionID',
     'Format',
     'Duration',
-    'Location'
+    'Location',
   ];
 
-  const rows = products.map(p => [
+  const rows = products.map((product) => [
     'Add',
     '',
-    p.name.substring(0, 80),
-    p.description,
-    p.price,
-    p.inStock ? 5 : 0,
-    p.imageUrl,
+    buildMarketplaceTitle(product, 80),
+    buildMarketplaceDescription(product),
+    product.price,
+    getExportQuantity(product),
+    product.imageUrl,
+    product.id,
     '1000',
     'FixedPrice',
     'GTC',
-    'Mexico'
+    'Mexico',
   ]);
 
   const csvContent = [
     headers.join(','),
-    ...rows.map(row => row.map(quoteCsvCell).join(','))
+    ...rows.map((row) => row.map(quoteCsvCell).join(',')),
   ].join('\n');
 
   downloadTextFile(
@@ -240,7 +340,7 @@ export function generateEbayCsv(products: ExportProduct[]) {
 
 /**
  * Generates a TSV for Amazon Inventory Loader review.
- * Product identifier fields remain blank until a real ASIN/UPC/EAN is known.
+ * Product identifier fields remain blank until a real ASIN, UPC or EAN is known.
  */
 export function generateAmazonCsv(products: ExportProduct[]) {
   const headers = [
@@ -253,25 +353,25 @@ export function generateAmazonCsv(products: ExportProduct[]) {
     'product-name',
     'brand-name',
     'description',
-    'main-image-url'
+    'main-image-url',
   ];
 
-  const rows = products.map(p => [
-    p.id,
-    p.price,
-    p.inStock ? 20 : 0,
+  const rows = products.map((product) => [
+    product.id,
+    product.price,
+    getExportQuantity(product),
     '',
     '',
     'New',
-    p.name,
-    p.brand,
-    p.description,
-    p.imageUrl
+    buildMarketplaceTitle(product),
+    normalizeExportText(product.brand),
+    buildMarketplaceDescription(product),
+    product.imageUrl,
   ]);
 
   const tsvContent = [
     headers.join('\t'),
-    ...rows.map(row => row.map(normalizeExportText).join('\t'))
+    ...rows.map((row) => row.map(normalizeExportText).join('\t')),
   ].join('\n');
 
   downloadTextFile(

@@ -14,6 +14,7 @@ import { useBrand } from '@/contexts/BrandContext';
 import { useLocation } from 'wouter';
 import {
   applyLocalCatalogOverrides,
+  isCustomCatalogProductId,
   isLocalCatalogStorageKeyForBrand,
   readLocalCatalogOverrides,
 } from '@/lib/adminCatalogStorage';
@@ -41,10 +42,34 @@ const ContactFormModal = lazy(() =>
   })),
 );
 
+type LocalCatalogSummary = {
+  customProductsCount: number;
+  editedProductsCount: number;
+  deletedProductsCount: number;
+};
+
+function getLocalCatalogSummary(brand: 'natura' | 'nikken'): LocalCatalogSummary {
+  const overrides = readLocalCatalogOverrides(brand);
+  const customProductsCount = overrides.products.filter((product) =>
+    isCustomCatalogProductId(product.id),
+  ).length;
+
+  return {
+    customProductsCount,
+    editedProductsCount: Math.max(overrides.products.length - customProductsCount, 0),
+    deletedProductsCount: overrides.deletedProductIds.length,
+  };
+}
+
 export default function Home() {
   const [data, setData] = useState<CatalogData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasLocalCatalogOverrides, setHasLocalCatalogOverrides] = useState(false);
+  const [localCatalogSummary, setLocalCatalogSummary] = useState<LocalCatalogSummary>({
+    customProductsCount: 0,
+    editedProductsCount: 0,
+    deletedProductsCount: 0,
+  });
   const [activeCategory, setActiveCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -69,11 +94,17 @@ export default function Home() {
     const syncLocalCatalogState = () => {
       try {
         const overrides = readLocalCatalogOverrides(brand);
+        setLocalCatalogSummary(getLocalCatalogSummary(brand));
         setHasLocalCatalogOverrides(
           overrides.products.length > 0 || overrides.deletedProductIds.length > 0,
         );
       } catch {
         setHasLocalCatalogOverrides(false);
+        setLocalCatalogSummary({
+          customProductsCount: 0,
+          editedProductsCount: 0,
+          deletedProductsCount: 0,
+        });
       }
     };
 
@@ -87,6 +118,7 @@ export default function Home() {
         }
 
         const overrides = readLocalCatalogOverrides(brand);
+        setLocalCatalogSummary(getLocalCatalogSummary(brand));
         const nextCatalogInfo = catalogInfo
           ? {
               ...catalogInfo,
@@ -296,7 +328,11 @@ export default function Home() {
                   {hasLocalCatalogOverrides ? (
                     <>
                       <span className="hidden text-primary/50 md:inline">|</span>
-                      <span className="text-primary/80">Incluye ajustes locales del catalogo.</span>
+                      <span className="text-primary/80">
+                        {localCatalogSummary.customProductsCount > 0
+                          ? `${localCatalogSummary.customProductsCount} producto${localCatalogSummary.customProductsCount === 1 ? '' : 's'} nuevo${localCatalogSummary.customProductsCount === 1 ? '' : 's'}`
+                          : `${localCatalogSummary.editedProductsCount} editado${localCatalogSummary.editedProductsCount === 1 ? '' : 's'} local${localCatalogSummary.editedProductsCount === 1 ? '' : 'es'}`}
+                      </span>
                     </>
                   ) : null}
                 </div>
@@ -364,7 +400,7 @@ export default function Home() {
             </p>
             {hasLocalCatalogOverrides ? (
               <p className="ml-4 mt-1 text-xs text-primary/80">
-                Vista actualizada con productos personalizados o cambios locales.
+                Vista actualizada con {localCatalogSummary.customProductsCount} nuevo{localCatalogSummary.customProductsCount === 1 ? '' : 's'}, {localCatalogSummary.editedProductsCount} editado{localCatalogSummary.editedProductsCount === 1 ? '' : 's'} y {localCatalogSummary.deletedProductsCount} oculto{localCatalogSummary.deletedProductsCount === 1 ? '' : 's'} localmente.
               </p>
             ) : null}
           </div>

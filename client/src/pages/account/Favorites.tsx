@@ -20,6 +20,7 @@ import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import { fetchCatalogData, type CatalogData, type CatalogProduct } from '@/lib/dataFetcher';
 import {
   applyLocalCatalogOverrides,
+  isCustomCatalogProductId,
   isLocalCatalogStorageKeyForBrand,
   readLocalCatalogOverrides,
 } from '@/lib/adminCatalogStorage';
@@ -47,6 +48,25 @@ const ContactFormModal = lazy(() =>
   })),
 );
 
+type LocalCatalogSummary = {
+  customProductsCount: number;
+  editedProductsCount: number;
+  deletedProductsCount: number;
+};
+
+function getLocalCatalogSummary(brand: 'natura' | 'nikken'): LocalCatalogSummary {
+  const overrides = readLocalCatalogOverrides(brand);
+  const customProductsCount = overrides.products.filter((product) =>
+    isCustomCatalogProductId(product.id),
+  ).length;
+
+  return {
+    customProductsCount,
+    editedProductsCount: Math.max(overrides.products.length - customProductsCount, 0),
+    deletedProductsCount: overrides.deletedProductIds.length,
+  };
+}
+
 export default function Favorites() {
   const { user } = useAuth();
   const { brand, isNikken } = useBrand();
@@ -59,6 +79,11 @@ export default function Favorites() {
   const [loading, setLoading] = useState(true);
   const [hasLoadError, setHasLoadError] = useState(false);
   const [hasLocalCatalogOverrides, setHasLocalCatalogOverrides] = useState(false);
+  const [localCatalogSummary, setLocalCatalogSummary] = useState<LocalCatalogSummary>({
+    customProductsCount: 0,
+    editedProductsCount: 0,
+    deletedProductsCount: 0,
+  });
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
   const [quickBuyProduct, setQuickBuyProduct] = useState<CatalogProduct | null>(null);
 
@@ -104,11 +129,17 @@ export default function Favorites() {
     const syncLocalCatalogState = () => {
       try {
         const overrides = readLocalCatalogOverrides(brand);
+        setLocalCatalogSummary(getLocalCatalogSummary(brand));
         setHasLocalCatalogOverrides(
           overrides.products.length > 0 || overrides.deletedProductIds.length > 0,
         );
       } catch {
         setHasLocalCatalogOverrides(false);
+        setLocalCatalogSummary({
+          customProductsCount: 0,
+          editedProductsCount: 0,
+          deletedProductsCount: 0,
+        });
       }
     };
 
@@ -123,6 +154,7 @@ export default function Favorites() {
         }
 
         const overrides = readLocalCatalogOverrides(brand);
+        setLocalCatalogSummary(getLocalCatalogSummary(brand));
         const nextCatalogData = catalogData
           ? {
               ...catalogData,
@@ -395,7 +427,7 @@ export default function Favorites() {
                 </p>
                 {hasLocalCatalogOverrides ? (
                   <p className="mt-1 text-sm text-primary/80">
-                    Esta vista incluye productos personalizados o cambios locales del catalogo.
+                    Esta vista incluye {localCatalogSummary.customProductsCount} nuevo{localCatalogSummary.customProductsCount === 1 ? '' : 's'}, {localCatalogSummary.editedProductsCount} editado{localCatalogSummary.editedProductsCount === 1 ? '' : 's'} y {localCatalogSummary.deletedProductsCount} oculto{localCatalogSummary.deletedProductsCount === 1 ? '' : 's'} del catalogo local.
                   </p>
                 ) : null}
               </div>

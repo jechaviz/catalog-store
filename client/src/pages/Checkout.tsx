@@ -72,6 +72,28 @@ function isConfiguredValue(value: string) {
     return !PLACEHOLDER_PATTERNS.some(pattern => normalizedValue.includes(pattern));
 }
 
+function getUniqueValues(values: string[]) {
+    return Array.from(
+        new Set(
+            values
+                .map(value => value.trim())
+                .filter(Boolean)
+        )
+    );
+}
+
+function joinReadableList(values: string[]) {
+    if (values.length <= 1) {
+        return values[0] || '';
+    }
+
+    if (values.length === 2) {
+        return `${values[0]} y ${values[1]}`;
+    }
+
+    return `${values.slice(0, -1).join(', ')} y ${values[values.length - 1]}`;
+}
+
 export default function Checkout() {
     const { items, subtotal, clearCart } = useCart();
     const [, setLocation] = useLocation();
@@ -222,6 +244,27 @@ export default function Checkout() {
     const activeProfileNote = user
         ? `Perfil activo: ${activeProfileLabel}${user.email ? ` <${user.email}>` : ''}${user.id ? ` [${user.id}]` : ''}`
         : undefined;
+    const deliveryTimes = getUniqueValues(items.map(item => item.product.deliveryTime || ''));
+    const deliveryMethods = getUniqueValues(
+        items.flatMap(item => item.product.deliveryMethods || [])
+    );
+    const backorderUnits = items.reduce(
+        (total, item) => total + (item.product.inStock ? 0 : item.quantity),
+        0
+    );
+    const deliverySummaryText =
+        deliveryTimes.length === 0
+            ? ''
+            : deliveryTimes.length === 1
+                ? deliveryTimes[0]
+                : `Variable segun producto: ${deliveryTimes.join(', ')}`;
+    const deliveryMethodsText = joinReadableList(deliveryMethods);
+    const orderMetadataNotes = [
+        activeProfileNote,
+        deliverySummaryText ? `Entrega estimada: ${deliverySummaryText}` : '',
+        deliveryMethodsText ? `Metodos de entrega: ${deliveryMethodsText}` : '',
+        backorderUnits > 0 ? `Unidades bajo pedido: ${backorderUnits}` : '',
+    ].filter(Boolean).join('\n');
 
     useEffect(() => {
         if (!paymentOptions[paymentMethod].enabled) {
@@ -238,10 +281,29 @@ export default function Checkout() {
         orderText += '*Articulos:*\n';
         items.forEach(item => {
             orderText += `- ${item.quantity}x ${item.product.name} ($${(item.product.price * item.quantity).toFixed(2)})\n`;
+            const itemDeliveryDetails = [
+                item.product.deliveryTime?.trim() || '',
+                ...(item.product.deliveryMethods || []).map(method => method.trim()).filter(Boolean),
+                item.product.inStock ? '' : 'Bajo pedido',
+            ].filter(Boolean);
+
+            if (itemDeliveryDetails.length > 0) {
+                orderText += `  Entrega: ${itemDeliveryDetails.join(' | ')}\n`;
+            }
         });
         orderText += `\n*Subtotal:* $${subtotal.toFixed(2)}\n`;
         orderText += `*Envio:* $${shippingCost.toFixed(2)}\n`;
         orderText += `*TOTAL:* $${total.toFixed(2)}\n\n`;
+        if (deliverySummaryText) {
+            orderText += `*Entrega estimada del pedido:* ${deliverySummaryText}\n`;
+        }
+        if (deliveryMethodsText) {
+            orderText += `*Metodos de entrega disponibles:* ${deliveryMethodsText}\n`;
+        }
+        if (backorderUnits > 0) {
+            orderText += `*Nota:* ${backorderUnits} unidad(es) quedan sujetas a confirmacion de disponibilidad.\n`;
+        }
+        orderText += '\n';
         return orderText;
     };
 
@@ -320,7 +382,7 @@ export default function Checkout() {
                 items: mapCartItemsToOrderItems(items),
                 carrier: paymentMethod === 'whatsapp_cash' ? 'Confirmacion por WhatsApp' : 'Mensajeria por asignar',
                 trackingNumber: odooOrder?.name ? String(odooOrder.name) : undefined,
-                notes: activeProfileNote,
+                notes: orderMetadataNotes || undefined,
             }, userId);
 
             clearCart();
@@ -347,7 +409,7 @@ export default function Checkout() {
                 customerAddress,
                 items: mapCartItemsToOrderItems(items),
                 carrier: 'Confirmacion por WhatsApp',
-                notes: activeProfileNote,
+                notes: orderMetadataNotes || undefined,
             }, userId);
 
             clearCart();
@@ -510,6 +572,16 @@ export default function Checkout() {
                                         <div className="flex-1 min-w-0">
                                             <p className="heading text-sm font-bold truncate">{item.product.name}</p>
                                             <p className="body text-xs text-muted-foreground">Cant: {item.quantity}</p>
+                                            {item.product.deliveryTime || item.product.deliveryMethods.length > 0 ? (
+                                                <p className="body text-[11px] text-slate-500 mt-1 leading-relaxed">
+                                                    {[item.product.deliveryTime, ...item.product.deliveryMethods].filter(Boolean).join(' · ')}
+                                                </p>
+                                            ) : null}
+                                            {!item.product.inStock ? (
+                                                <p className="body text-[11px] text-amber-700 mt-1">
+                                                    Bajo pedido; disponibilidad sujeta a confirmacion.
+                                                </p>
+                                            ) : null}
                                         </div>
                                         <div className="font-bold heading text-primary shrink-0">
                                             ${(item.product.price * item.quantity).toFixed(2)}
@@ -517,6 +589,29 @@ export default function Checkout() {
                                     </div>
                                 ))}
                             </div>
+
+                            {deliverySummaryText || deliveryMethodsText || backorderUnits > 0 ? (
+                                <div className="mb-6 rounded-2xl border border-primary/10 bg-secondary/5 px-4 py-4 space-y-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                        Logistica del pedido
+                                    </p>
+                                    {deliverySummaryText ? (
+                                        <p className="text-sm text-foreground">
+                                            Entrega estimada: <span className="font-medium">{deliverySummaryText}</span>
+                                        </p>
+                                    ) : null}
+                                    {deliveryMethodsText ? (
+                                        <p className="text-xs text-muted-foreground">
+                                            Metodos de entrega: {deliveryMethodsText}
+                                        </p>
+                                    ) : null}
+                                    {backorderUnits > 0 ? (
+                                        <p className="text-xs text-amber-700">
+                                            Hay {backorderUnits} unidad{backorderUnits === 1 ? '' : 'es'} bajo pedido; el tiempo final puede variar.
+                                        </p>
+                                    ) : null}
+                                </div>
+                            ) : null}
 
                             <div className="space-y-3 pt-4 border-t border-border/50 mb-6">
                                 <div className="flex justify-between text-muted-foreground text-sm">
