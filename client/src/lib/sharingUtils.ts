@@ -5,6 +5,12 @@ type ExportProduct = Pick<
   'id' | 'name' | 'description' | 'price' | 'imageUrl' | 'brand' | 'subBrand' | 'inStock'
 >;
 
+const EXPORT_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 function getExportBrandLabel(products: ExportProduct[]) {
   return (products[0]?.brand || 'Catalogo').replace(/\s+/g, '_');
 }
@@ -12,6 +18,34 @@ function getExportBrandLabel(products: ExportProduct[]) {
 function getCatalogLink(product: ExportProduct) {
   const basePath = product.brand.toLowerCase() === 'nikken' ? '/nikken' : '';
   return `${window.location.origin}${basePath}?p=${product.id}`;
+}
+
+function getExportDateStamp() {
+  return EXPORT_DATE_FORMATTER.format(new Date());
+}
+
+function normalizeExportText(value: string | number | null | undefined) {
+  return String(value ?? '')
+    .replace(/\r?\n|\r/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function quoteCsvCell(value: string | number | null | undefined) {
+  return `"${normalizeExportText(value).replace(/"/g, '""')}"`;
+}
+
+function downloadTextFile(content: string, fileName: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', fileName);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 /**
@@ -96,7 +130,7 @@ export function generateWhatsAppCsv(products: ExportProduct[]) {
   const rows = products.map(p => [
     p.id,
     p.name,
-    p.description.replace(/,/g, ' '),
+    p.description,
     p.inStock ? 'in stock' : 'out of stock',
     'new',
     `${p.price} MXN`,
@@ -108,22 +142,19 @@ export function generateWhatsAppCsv(products: ExportProduct[]) {
 
   const csvContent = [
     headers.join(','),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ...rows.map(row => row.map(quoteCsvCell).join(','))
   ].join('\n');
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `${getExportBrandLabel(products)}_WhatsApp_${new Date().toISOString().split('T')[0]}.csv`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  downloadTextFile(
+    csvContent,
+    `${getExportBrandLabel(products)}_WhatsApp_${getExportDateStamp()}.csv`,
+    'text/csv;charset=utf-8;'
+  );
 }
 
 /**
- * Generates a CSV for Mercado Libre Bulk Upload.
+ * Generates a CSV for Mercado Libre bulk upload review.
+ * Marketplace-specific identifiers remain blank on purpose.
  */
 export function generateMercadoLibreCsv(products: ExportProduct[]) {
   const headers = [
@@ -142,31 +173,29 @@ export function generateMercadoLibreCsv(products: ExportProduct[]) {
     p.name,
     p.price,
     p.inStock ? 10 : 0,
-    'Salud y Belleza > Maquillaje',
-    p.description.replace(/,/g, ' '),
+    '',
+    p.description,
     p.imageUrl,
     p.brand,
-    p.subBrand,
-    '' // UPC empty
+    p.subBrand || '',
+    ''
   ]);
 
-  const csvContent = '\uFEFF' + [ // UTF-8 BOM for Excel
+  const csvContent = '\uFEFF' + [
     headers.join(','),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ...rows.map(row => row.map(quoteCsvCell).join(','))
   ].join('\n');
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `${getExportBrandLabel(products)}_MercadoLibre_${new Date().toISOString().split('T')[0]}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  downloadTextFile(
+    csvContent,
+    `${getExportBrandLabel(products)}_MercadoLibre_${getExportDateStamp()}.csv`,
+    'text/csv;charset=utf-8;'
+  );
 }
 
 /**
- * Generates a CSV for eBay File Exchange.
+ * Generates a CSV for eBay File Exchange review.
+ * Category is left blank to avoid exporting a misleading category id.
  */
 export function generateEbayCsv(products: ExportProduct[]) {
   const headers = [
@@ -185,13 +214,13 @@ export function generateEbayCsv(products: ExportProduct[]) {
 
   const rows = products.map(p => [
     'Add',
-    '26395', // Health & Beauty category placeholder
+    '',
     p.name.substring(0, 80),
-    p.description.replace(/,/g, ' '),
+    p.description,
     p.price,
     p.inStock ? 5 : 0,
     p.imageUrl,
-    '1000', // New condition
+    '1000',
     'FixedPrice',
     'GTC',
     'Mexico'
@@ -199,21 +228,19 @@ export function generateEbayCsv(products: ExportProduct[]) {
 
   const csvContent = [
     headers.join(','),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ...rows.map(row => row.map(quoteCsvCell).join(','))
   ].join('\n');
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `${getExportBrandLabel(products)}_eBay_${new Date().toISOString().split('T')[0]}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  downloadTextFile(
+    csvContent,
+    `${getExportBrandLabel(products)}_eBay_${getExportDateStamp()}.csv`,
+    'text/csv;charset=utf-8;'
+  );
 }
 
 /**
- * Generates a TSV for Amazon Inventory Loader.
+ * Generates a TSV for Amazon Inventory Loader review.
+ * Product identifier fields remain blank until a real ASIN/UPC/EAN is known.
  */
 export function generateAmazonCsv(products: ExportProduct[]) {
   const headers = [
@@ -233,29 +260,25 @@ export function generateAmazonCsv(products: ExportProduct[]) {
     p.id,
     p.price,
     p.inStock ? 20 : 0,
-    '', // ASIN/UPC
-    '1', // ASIN type placeholder
+    '',
+    '',
     'New',
     p.name,
     p.brand,
-    p.description.replace(/,/g, ' '),
+    p.description,
     p.imageUrl
   ]);
 
-  // Amazon expects Tab-Separated Values (TSV) or CSV
-  const csvContent = [
+  const tsvContent = [
     headers.join('\t'),
-    ...rows.map(row => row.join('\t'))
+    ...rows.map(row => row.map(normalizeExportText).join('\t'))
   ].join('\n');
 
-  const blob = new Blob([csvContent], { type: 'text/tab-separated-values;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `${getExportBrandLabel(products)}_Amazon_${new Date().toISOString().split('T')[0]}.txt`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  downloadTextFile(
+    tsvContent,
+    `${getExportBrandLabel(products)}_Amazon_${getExportDateStamp()}.tsv`,
+    'text/tab-separated-values;charset=utf-8;'
+  );
 }
 
 /**
