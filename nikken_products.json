@@ -1,0 +1,562 @@
+[
+  {
+    "id": "12569",
+    "name": "KENKO SLEEP HAGU FORRO",
+    "price": 34200,
+    "image": "tv-store/Products/images/index.htm",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP HAGU FORRO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "13521",
+    "name": "PIMAG PIDROGEN",
+    "price": 181500,
+    "image": "tv-store/Products/images/13521.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG PIDROGEN. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1323",
+    "name": "TRUE ELEMENTS FIRSKIN CLEANSER",
+    "price": 62700,
+    "image": "tv-store/Products/images/1323.jpg",
+    "category": "Bienestar",
+    "subBrand": "True Elements",
+    "description": "Producto de bienestar Nikken: TRUE ELEMENTS FIRSKIN CLEANSER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1322",
+    "name": "TRUE ELEMENTS FIRSKIN ROLLER",
+    "price": 49500,
+    "image": "tv-store/Products/images/1322.jpg",
+    "category": "Bienestar",
+    "subBrand": "True Elements",
+    "description": "Producto de bienestar Nikken: TRUE ELEMENTS FIRSKIN ROLLER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "13681",
+    "name": "PIMAG WATERFALL GRIS",
+    "price": 547600,
+    "image": "tv-store/Products/images/13681.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG WATERFALL GRIS. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "13671",
+    "name": "PIMAG PI WATER GRIS",
+    "price": 256200,
+    "image": "tv-store/Products/images/13671.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG PI WATER GRIS. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4930",
+    "name": "PIMAG REPUESTOS PAQUETE PIMAG WATER SYSTEM / AQUA POUR DELUXE",
+    "price": 87100,
+    "image": "tv-store/Products/images/4930.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE PIMAG WATER SYSTEM / AQUA POUR DELUXE. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4931",
+    "name": "PIMAG REPUESTOS PAQUETE CARTUCHOS PIMAG WATER SYSTEM / AQUA POUR DELUXE",
+    "price": 133700,
+    "image": "tv-store/Products/images/4931.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE CARTUCHOS PIMAG WATER SYSTEM / AQUA POUR DELUXE. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4932",
+    "name": "PIMAG REPUESTOS PAQUETE PIMAG WATER SYSTEM / AQUA POUR DELUXE COMPLETO",
+    "price": 105500,
+    "image": "tv-store/Products/images/4932.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE PIMAG WATER SYSTEM / AQUA POUR DELUXE COMPLETO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4933",
+    "name": "PIMAG REPUESTOS PAQUETE PI WATER",
+    "price": 71100,
+    "image": "tv-store/Products/images/4933.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE PI WATER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4934",
+    "name": "PIMAG REPUESTOS PAQUETE WATERFALL",
+    "price": 85700,
+    "image": "tv-store/Products/images/4934.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE WATERFALL. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4935",
+    "name": "PIMAG REPUESTOS PAQUETE PI WATER COMPLETO",
+    "price": 92400,
+    "image": "tv-store/Products/images/4935.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE PI WATER COMPLETO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1311",
+    "name": "KENKO SLEEP OYASUMI",
+    "price": 99300,
+    "image": "tv-store/Products/images/1311.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP OYASUMI. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1290",
+    "name": "KENKO SLEEP PET PAD CHICO 60 X 75",
+    "price": 98100,
+    "image": "tv-store/Products/images/1290.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP PET PAD CHICO 60 X 75. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1291",
+    "name": "KENKO SLEEP PET PAD GRANDE 75 X 100",
+    "price": 130700,
+    "image": "tv-store/Products/images/1291.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP PET PAD GRANDE 75 X 100. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "13129",
+    "name": "KENKO SLEEP MACARON FUNDA",
+    "price": 29400,
+    "image": "tv-store/Products/images/13129.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP MACARON FUNDA. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "12450",
+    "name": "KENKO SLEEP FIT PAD QUEEN / 2.5 PLAZAS V2",
+    "price": 305600,
+    "image": "tv-store/Products/images/12450.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP FIT PAD QUEEN / 2.5 PLAZAS V2. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "10310",
+    "name": "KENKO SLEEP&nbsp; LUXURY MATTRESS 1 PLAZA",
+    "price": 882400,
+    "image": "tv-store/Products/images/10310.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP&nbsp; LUXURY MATTRESS 1 PLAZA. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "10450",
+    "name": "KENKO SLEEP&nbsp; LUXURY MATTRESS SUPER KING/3 PLAZAS",
+    "price": 1910600,
+    "image": "tv-store/Products/images/10450.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP&nbsp; LUXURY MATTRESS SUPER KING/3 PLAZAS. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1265",
+    "name": "KENKO SLEEP COMFORTER - MATRIMONIAL / QUEEN",
+    "price": 294300,
+    "image": "tv-store/Products/images/1265.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP COMFORTER - MATRIMONIAL / QUEEN. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "12420",
+    "name": "KENKO SLEEP FIT PAD 1.5 PLAZAS V2",
+    "price": 228300,
+    "image": "tv-store/Products/images/12420.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP FIT PAD 1.5 PLAZAS V2. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1264",
+    "name": "KENKO SLEEP COMFORTER INDIVIDUAL",
+    "price": 245000,
+    "image": "tv-store/Products/images/1264.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP COMFORTER INDIVIDUAL. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "12470",
+    "name": "KENKO SLEEP FIT PAD KING V2",
+    "price": 384200,
+    "image": "tv-store/Products/images/12470.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP FIT PAD KING V2. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "10440",
+    "name": "KENKO SLEEP&nbsp; LUXURY MATTRESS KING",
+    "price": 1849000,
+    "image": "tv-store/Products/images/10440.jpg",
+    "category": "Descanso",
+    "subBrand": "KenkoSleep",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP&nbsp; LUXURY MATTRESS KING. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1359",
+    "name": "PIMAG OPTIMIZER",
+    "price": 408500,
+    "image": "tv-store/Products/images/1359.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG OPTIMIZER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "13631",
+    "name": "PIMAG AQUA POUR DELUXE",
+    "price": 388600,
+    "image": "tv-store/Products/images/13631.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG AQUA POUR DELUXE. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "13502",
+    "name": "PIMAG BOTELLA DEPORTIVA",
+    "price": 47000,
+    "image": "tv-store/Products/images/13502.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: PIMAG BOTELLA DEPORTIVA. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4924",
+    "name": "PAQUETE MEDIO AMBIENTE WATERFALL",
+    "price": 1384100,
+    "image": "tv-store/Products/images/4924.jpg",
+    "category": "Bienestar",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: PAQUETE MEDIO AMBIENTE WATERFALL. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4923",
+    "name": "PAQUETE MEDIO AMBIENTE PI WATER",
+    "price": 1121800,
+    "image": "tv-store/Products/images/4923.jpg",
+    "category": "Bienestar",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: PAQUETE MEDIO AMBIENTE PI WATER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4929",
+    "name": "PAQUETE AGUA COMPLETO WATERFALL",
+    "price": 1112000,
+    "image": "tv-store/Products/images/4929.jpg",
+    "category": "Agua",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: PAQUETE AGUA COMPLETO WATERFALL. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4918",
+    "name": "PAQUETE AGUA WATERFALL - OPTIMIZER",
+    "price": 860500,
+    "image": "tv-store/Products/images/4918.jpg",
+    "category": "Agua",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: PAQUETE AGUA WATERFALL - OPTIMIZER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4919",
+    "name": "PAQUETE AGUA COMPLETO PI WATER",
+    "price": 849700,
+    "image": "tv-store/Products/images/4919.jpg",
+    "category": "Agua",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: PAQUETE AGUA COMPLETO PI WATER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "4917",
+    "name": "PAQUETE AGUA PI WATER - OPTIMIZER",
+    "price": 598300,
+    "image": "tv-store/Products/images/4917.jpg",
+    "category": "Agua",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: PAQUETE AGUA PI WATER - OPTIMIZER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1441",
+    "name": "KENKOAIR PURIFIER",
+    "price": 710800,
+    "image": "tv-store/Products/images/1441.jpg",
+    "category": "Aire",
+    "subBrand": "KenkoAir",
+    "description": "Producto de bienestar Nikken: KENKOAIR PURIFIER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "128015",
+    "name": "KENKO BALANCE SEAT REGULAR.",
+    "price": 107000,
+    "image": "tv-store/Products/images/128015.jpg",
+    "category": "Accesorios",
+    "subBrand": "KenkoBalance",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE SEAT REGULAR.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "128115",
+    "name": "KENKO BALANCE SEAT KING.",
+    "price": 113100,
+    "image": "tv-store/Products/images/128115.jpg",
+    "category": "Accesorios",
+    "subBrand": "KenkoBalance",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE SEAT KING.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1320115",
+    "name": "KENKO BALANCE MAGDUO.",
+    "price": 39100,
+    "image": "tv-store/Products/images/1320115.jpg",
+    "category": "Accesorios",
+    "subBrand": "KenkoBalance",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE MAGDUO.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "132115",
+    "name": "KENKO BALANCE FIRSTONE.",
+    "price": 33200,
+    "image": "tv-store/Products/images/132115.jpg",
+    "category": "Accesorios",
+    "subBrand": "KenkoBalance",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE FIRSTONE.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "2020115",
+    "name": "KENKO BALANCE MSTRIDES PLANTILLAS TALLA S.",
+    "price": 35400,
+    "image": "tv-store/Products/images/2020115.jpg",
+    "category": "Accesorios",
+    "subBrand": "KenkoBalance",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE MSTRIDES PLANTILLAS TALLA S.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "2021115",
+    "name": "KENKO BALANCE MSTRIDES PLANTILLAS TALLA L.",
+    "price": 40100,
+    "image": "tv-store/Products/images/2021115.jpg",
+    "category": "Accesorios",
+    "subBrand": "KenkoBalance",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE MSTRIDES PLANTILLAS TALLA L.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "1447115",
+    "name": "KENKO BALANCE MAGFLEX.",
+    "price": 52200,
+    "image": "tv-store/Products/images/1447115.jpg",
+    "category": "Accesorios",
+    "subBrand": "KenkoBalance",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE MAGFLEX.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19091",
+    "name": "KENKO FASHION BRAZALETE TRIPHASE DAMA",
+    "price": 93000,
+    "image": "tv-store/Products/images/19091.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BRAZALETE TRIPHASE DAMA. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19092",
+    "name": "KENKO FASHION BRAZALETE TRIPHASE CABALLERO",
+    "price": 93000,
+    "image": "tv-store/Products/images/19092.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BRAZALETE TRIPHASE CABALLERO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19093",
+    "name": "KENKO FASHION BRAZALETE TRIPHASE DOS TONOS",
+    "price": 93000,
+    "image": "tv-store/Products/images/19093.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BRAZALETE TRIPHASE DOS TONOS. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19094",
+    "name": "KENKO FASHION BRAZALETE TRIPHASE TITANIO",
+    "price": 117700,
+    "image": "tv-store/Products/images/19094.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BRAZALETE TRIPHASE TITANIO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19129",
+    "name": "KENKO FASHION HOSH&Iacute; COLLAR",
+    "price": 41500,
+    "image": "tv-store/Products/images/19129.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION HOSH&Iacute; COLLAR. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19130",
+    "name": "KENKO FASHION HOSH&Iacute; ARETES",
+    "price": 39000,
+    "image": "tv-store/Products/images/19130.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION HOSH&Iacute; ARETES. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19300",
+    "name": "KENKO FASHION POWERBAND BRAZALETE VERDE 19 CM",
+    "price": 30800,
+    "image": "tv-store/Products/images/19300.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION POWERBAND BRAZALETE VERDE 19 CM. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19143",
+    "name": "KENKO FASHION BSHINE COLLAR Y DIJE",
+    "price": 41100,
+    "image": "tv-store/Products/images/19143.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BSHINE COLLAR Y DIJE. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19144",
+    "name": "KENKO FASHION BSHINE ARETES",
+    "price": 52800,
+    "image": "tv-store/Products/images/19144.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BSHINE ARETES. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19211",
+    "name": "KENKO FASHION IKIGAI IKIRU BRAZALETE TONO PLATEADO",
+    "price": 63300,
+    "image": "tv-store/Products/images/19211.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION IKIGAI IKIRU BRAZALETE TONO PLATEADO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19221",
+    "name": "KENKO FASHION IKIGAI IKI STOPPERS TONO PLATEADO",
+    "price": 21100,
+    "image": "tv-store/Products/images/19221.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION IKIGAI IKI STOPPERS TONO PLATEADO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "19231",
+    "name": "KENKO FASHION IKIGAI BENIKKEN IKI NIKKEN DIJE TONO PLATEADO",
+    "price": 23100,
+    "image": "tv-store/Products/images/19231.jpg",
+    "category": "Joyería",
+    "subBrand": "Nikken",
+    "description": "Producto de bienestar Nikken: KENKO FASHION IKIGAI BENIKKEN IKI NIKKEN DIJE TONO PLATEADO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "9147",
+    "name": "STICKER QR PIMAG AQUAPOUR / PIMAG WATER SYSTEM",
+    "price": 100,
+    "image": "tv-store/Products/images/9147.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: STICKER QR PIMAG AQUAPOUR / PIMAG WATER SYSTEM. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "9150",
+    "name": "STICKER QR PIMAG OPTIMIZER",
+    "price": 100,
+    "image": "tv-store/Products/images/9150.jpg",
+    "category": "Agua",
+    "subBrand": "PiMag",
+    "description": "Producto de bienestar Nikken: STICKER QR PIMAG OPTIMIZER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  },
+  {
+    "id": "9151",
+    "name": "STICKER QR KENKOAIR PURIFIER",
+    "price": 100,
+    "image": "tv-store/Products/images/9151.jpg",
+    "category": "Aire",
+    "subBrand": "KenkoAir",
+    "description": "Producto de bienestar Nikken: STICKER QR KENKOAIR PURIFIER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "isNikken": true
+  }
+]

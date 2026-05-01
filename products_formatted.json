@@ -1,0 +1,954 @@
+[
+  {
+    "id": "12569",
+    "name": "KENKO SLEEP HAGU FORRO",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP HAGU FORRO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 34200,
+    "imageUrl": "/assets/nikken/products/12569.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "13521",
+    "name": "PIMAG PIDROGEN",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG PIDROGEN. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 181500,
+    "imageUrl": "/assets/nikken/products/13521.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1323",
+    "name": "TRUE ELEMENTS FIRSKIN CLEANSER",
+    "brand": "Nikken",
+    "subBrand": "True Elements",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: TRUE ELEMENTS FIRSKIN CLEANSER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 62700,
+    "imageUrl": "/assets/nikken/products/1323.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1322",
+    "name": "TRUE ELEMENTS FIRSKIN ROLLER",
+    "brand": "Nikken",
+    "subBrand": "True Elements",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: TRUE ELEMENTS FIRSKIN ROLLER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 49500,
+    "imageUrl": "/assets/nikken/products/1322.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "13681",
+    "name": "PIMAG WATERFALL GRIS",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG WATERFALL GRIS. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 547600,
+    "imageUrl": "/assets/nikken/products/13681.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "13671",
+    "name": "PIMAG PI WATER GRIS",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG PI WATER GRIS. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 256200,
+    "imageUrl": "/assets/nikken/products/13671.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4930",
+    "name": "PIMAG REPUESTOS PAQUETE PIMAG WATER SYSTEM / AQUA POUR DELUXE",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE PIMAG WATER SYSTEM / AQUA POUR DELUXE. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 87100,
+    "imageUrl": "/assets/nikken/products/4930.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4931",
+    "name": "PIMAG REPUESTOS PAQUETE CARTUCHOS PIMAG WATER SYSTEM / AQUA POUR DELUXE",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE CARTUCHOS PIMAG WATER SYSTEM / AQUA POUR DELUXE. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 133700,
+    "imageUrl": "/assets/nikken/products/4931.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4932",
+    "name": "PIMAG REPUESTOS PAQUETE PIMAG WATER SYSTEM / AQUA POUR DELUXE COMPLETO",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE PIMAG WATER SYSTEM / AQUA POUR DELUXE COMPLETO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 105500,
+    "imageUrl": "/assets/nikken/products/4932.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4933",
+    "name": "PIMAG REPUESTOS PAQUETE PI WATER",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE PI WATER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 71100,
+    "imageUrl": "/assets/nikken/products/4933.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4934",
+    "name": "PIMAG REPUESTOS PAQUETE WATERFALL",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE WATERFALL. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 85700,
+    "imageUrl": "/assets/nikken/products/4934.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4935",
+    "name": "PIMAG REPUESTOS PAQUETE PI WATER COMPLETO",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG REPUESTOS PAQUETE PI WATER COMPLETO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 92400,
+    "imageUrl": "/assets/nikken/products/4935.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1311",
+    "name": "KENKO SLEEP OYASUMI",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP OYASUMI. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 99300,
+    "imageUrl": "/assets/nikken/products/1311.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1290",
+    "name": "KENKO SLEEP PET PAD CHICO 60 X 75",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP PET PAD CHICO 60 X 75. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 98100,
+    "imageUrl": "/assets/nikken/products/1290.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1291",
+    "name": "KENKO SLEEP PET PAD GRANDE 75 X 100",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP PET PAD GRANDE 75 X 100. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 130700,
+    "imageUrl": "/assets/nikken/products/1291.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "13129",
+    "name": "KENKO SLEEP MACARON FUNDA",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP MACARON FUNDA. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 29400,
+    "imageUrl": "/assets/nikken/products/13129.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "12450",
+    "name": "KENKO SLEEP FIT PAD QUEEN / 2.5 PLAZAS V2",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP FIT PAD QUEEN / 2.5 PLAZAS V2. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 305600,
+    "imageUrl": "/assets/nikken/products/12450.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "10310",
+    "name": "KENKO SLEEP&nbsp; LUXURY MATTRESS 1 PLAZA",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP&nbsp; LUXURY MATTRESS 1 PLAZA. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 882400,
+    "imageUrl": "/assets/nikken/products/10310.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "10450",
+    "name": "KENKO SLEEP&nbsp; LUXURY MATTRESS SUPER KING/3 PLAZAS",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP&nbsp; LUXURY MATTRESS SUPER KING/3 PLAZAS. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 1910600,
+    "imageUrl": "/assets/nikken/products/10450.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1265",
+    "name": "KENKO SLEEP COMFORTER - MATRIMONIAL / QUEEN",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP COMFORTER - MATRIMONIAL / QUEEN. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 294300,
+    "imageUrl": "/assets/nikken/products/1265.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "12420",
+    "name": "KENKO SLEEP FIT PAD 1.5 PLAZAS V2",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP FIT PAD 1.5 PLAZAS V2. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 228300,
+    "imageUrl": "/assets/nikken/products/12420.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1264",
+    "name": "KENKO SLEEP COMFORTER INDIVIDUAL",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP COMFORTER INDIVIDUAL. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 245000,
+    "imageUrl": "/assets/nikken/products/1264.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "12470",
+    "name": "KENKO SLEEP FIT PAD KING V2",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP FIT PAD KING V2. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 384200,
+    "imageUrl": "/assets/nikken/products/12470.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "10440",
+    "name": "KENKO SLEEP&nbsp; LUXURY MATTRESS KING",
+    "brand": "Nikken",
+    "subBrand": "KenkoSleep",
+    "categoryId": "nikken-3",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO SLEEP&nbsp; LUXURY MATTRESS KING. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 1849000,
+    "imageUrl": "/assets/nikken/products/10440.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1359",
+    "name": "PIMAG OPTIMIZER",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG OPTIMIZER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 408500,
+    "imageUrl": "/assets/nikken/products/1359.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "13631",
+    "name": "PIMAG AQUA POUR DELUXE",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG AQUA POUR DELUXE. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 388600,
+    "imageUrl": "/assets/nikken/products/13631.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "13502",
+    "name": "PIMAG BOTELLA DEPORTIVA",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PIMAG BOTELLA DEPORTIVA. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 47000,
+    "imageUrl": "/assets/nikken/products/13502.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4924",
+    "name": "PAQUETE MEDIO AMBIENTE WATERFALL",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PAQUETE MEDIO AMBIENTE WATERFALL. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 1384100,
+    "imageUrl": "/assets/nikken/products/4924.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4923",
+    "name": "PAQUETE MEDIO AMBIENTE PI WATER",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PAQUETE MEDIO AMBIENTE PI WATER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 1121800,
+    "imageUrl": "/assets/nikken/products/4923.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4929",
+    "name": "PAQUETE AGUA COMPLETO WATERFALL",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PAQUETE AGUA COMPLETO WATERFALL. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 1112000,
+    "imageUrl": "/assets/nikken/products/4929.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4918",
+    "name": "PAQUETE AGUA WATERFALL - OPTIMIZER",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PAQUETE AGUA WATERFALL - OPTIMIZER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 860500,
+    "imageUrl": "/assets/nikken/products/4918.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4919",
+    "name": "PAQUETE AGUA COMPLETO PI WATER",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PAQUETE AGUA COMPLETO PI WATER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 849700,
+    "imageUrl": "/assets/nikken/products/4919.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "4917",
+    "name": "PAQUETE AGUA PI WATER - OPTIMIZER",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: PAQUETE AGUA PI WATER - OPTIMIZER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 598300,
+    "imageUrl": "/assets/nikken/products/4917.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1441",
+    "name": "KENKOAIR PURIFIER",
+    "brand": "Nikken",
+    "subBrand": "KenkoAir",
+    "categoryId": "nikken-4",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKOAIR PURIFIER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 710800,
+    "imageUrl": "/assets/nikken/products/1441.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "128015",
+    "name": "KENKO BALANCE SEAT REGULAR.",
+    "brand": "Nikken",
+    "subBrand": "KenkoBalance",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE SEAT REGULAR.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 107000,
+    "imageUrl": "/assets/nikken/products/128015.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "128115",
+    "name": "KENKO BALANCE SEAT KING.",
+    "brand": "Nikken",
+    "subBrand": "KenkoBalance",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE SEAT KING.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 113100,
+    "imageUrl": "/assets/nikken/products/128115.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1320115",
+    "name": "KENKO BALANCE MAGDUO.",
+    "brand": "Nikken",
+    "subBrand": "KenkoBalance",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE MAGDUO.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 39100,
+    "imageUrl": "/assets/nikken/products/1320115.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "132115",
+    "name": "KENKO BALANCE FIRSTONE.",
+    "brand": "Nikken",
+    "subBrand": "KenkoBalance",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE FIRSTONE.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 33200,
+    "imageUrl": "/assets/nikken/products/132115.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "2020115",
+    "name": "KENKO BALANCE MSTRIDES PLANTILLAS TALLA S.",
+    "brand": "Nikken",
+    "subBrand": "KenkoBalance",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE MSTRIDES PLANTILLAS TALLA S.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 35400,
+    "imageUrl": "/assets/nikken/products/2020115.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "2021115",
+    "name": "KENKO BALANCE MSTRIDES PLANTILLAS TALLA L.",
+    "brand": "Nikken",
+    "subBrand": "KenkoBalance",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE MSTRIDES PLANTILLAS TALLA L.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 40100,
+    "imageUrl": "/assets/nikken/products/2021115.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "1447115",
+    "name": "KENKO BALANCE MAGFLEX.",
+    "brand": "Nikken",
+    "subBrand": "KenkoBalance",
+    "categoryId": "nikken-5",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO BALANCE MAGFLEX.. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 52200,
+    "imageUrl": "/assets/nikken/products/1447115.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19091",
+    "name": "KENKO FASHION BRAZALETE TRIPHASE DAMA",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BRAZALETE TRIPHASE DAMA. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 93000,
+    "imageUrl": "/assets/nikken/products/19091.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19092",
+    "name": "KENKO FASHION BRAZALETE TRIPHASE CABALLERO",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BRAZALETE TRIPHASE CABALLERO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 93000,
+    "imageUrl": "/assets/nikken/products/19092.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19093",
+    "name": "KENKO FASHION BRAZALETE TRIPHASE DOS TONOS",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BRAZALETE TRIPHASE DOS TONOS. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 93000,
+    "imageUrl": "/assets/nikken/products/19093.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19094",
+    "name": "KENKO FASHION BRAZALETE TRIPHASE TITANIO",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BRAZALETE TRIPHASE TITANIO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 117700,
+    "imageUrl": "/assets/nikken/products/19094.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19129",
+    "name": "KENKO FASHION HOSH&Iacute; COLLAR",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION HOSH&Iacute; COLLAR. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 41500,
+    "imageUrl": "/assets/nikken/products/19129.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19130",
+    "name": "KENKO FASHION HOSH&Iacute; ARETES",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION HOSH&Iacute; ARETES. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 39000,
+    "imageUrl": "/assets/nikken/products/19130.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19300",
+    "name": "KENKO FASHION POWERBAND BRAZALETE VERDE 19 CM",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION POWERBAND BRAZALETE VERDE 19 CM. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 30800,
+    "imageUrl": "/assets/nikken/products/19300.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19143",
+    "name": "KENKO FASHION BSHINE COLLAR Y DIJE",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BSHINE COLLAR Y DIJE. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 41100,
+    "imageUrl": "/assets/nikken/products/19143.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19144",
+    "name": "KENKO FASHION BSHINE ARETES",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION BSHINE ARETES. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 52800,
+    "imageUrl": "/assets/nikken/products/19144.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19211",
+    "name": "KENKO FASHION IKIGAI IKIRU BRAZALETE TONO PLATEADO",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION IKIGAI IKIRU BRAZALETE TONO PLATEADO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 63300,
+    "imageUrl": "/assets/nikken/products/19211.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19221",
+    "name": "KENKO FASHION IKIGAI IKI STOPPERS TONO PLATEADO",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION IKIGAI IKI STOPPERS TONO PLATEADO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 21100,
+    "imageUrl": "/assets/nikken/products/19221.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "19231",
+    "name": "KENKO FASHION IKIGAI BENIKKEN IKI NIKKEN DIJE TONO PLATEADO",
+    "brand": "Nikken",
+    "subBrand": "Nikken",
+    "categoryId": "nikken-6",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: KENKO FASHION IKIGAI BENIKKEN IKI NIKKEN DIJE TONO PLATEADO. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 23100,
+    "imageUrl": "/assets/nikken/products/19231.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "9147",
+    "name": "STICKER QR PIMAG AQUAPOUR / PIMAG WATER SYSTEM",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: STICKER QR PIMAG AQUAPOUR / PIMAG WATER SYSTEM. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 100,
+    "imageUrl": "/assets/nikken/products/9147.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "9150",
+    "name": "STICKER QR PIMAG OPTIMIZER",
+    "brand": "Nikken",
+    "subBrand": "PiMag",
+    "categoryId": "nikken-1",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: STICKER QR PIMAG OPTIMIZER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 100,
+    "imageUrl": "/assets/nikken/products/9150.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  },
+  {
+    "id": "9151",
+    "name": "STICKER QR KENKOAIR PURIFIER",
+    "brand": "Nikken",
+    "subBrand": "KenkoAir",
+    "categoryId": "nikken-4",
+    "gender": "unisex",
+    "description": "Producto de bienestar Nikken: STICKER QR KENKOAIR PURIFIER. Diseñado para mejorar tu calidad de vida a través de tecnologías naturales.",
+    "benefits": [],
+    "price": 100,
+    "imageUrl": "/assets/nikken/products/9151.jpg",
+    "inStock": true,
+    "deliveryTime": "3-5 días hábiles",
+    "deliveryMethods": [
+      "Envío nacional"
+    ]
+  }
+]
