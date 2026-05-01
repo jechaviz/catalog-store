@@ -163,10 +163,64 @@ export default defineConfig({
   },
   envDir: path.resolve(import.meta.dirname),
   root: path.resolve(import.meta.dirname, "client"),
-  base: './', // Asegura que los assets se carguen correctamente en GitHub Pages
+  base: process.env.NODE_ENV === 'production' ? './' : '/', // Asegura que los assets se carguen correctamente en GitHub Pages
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return;
+          }
+
+          if (id.includes("react") || id.includes("scheduler") || id.includes("wouter")) {
+            return "framework-vendor";
+          }
+
+          if (
+            id.includes("@apollo") ||
+            id.includes("graphql") ||
+            id.includes("axios") ||
+            id.includes("pocketbase")
+          ) {
+            return "data-vendor";
+          }
+
+          if (
+            id.includes("@radix-ui") ||
+            id.includes("vaul") ||
+            id.includes("cmdk") ||
+            id.includes("input-otp") ||
+            id.includes("react-day-picker") ||
+            id.includes("react-resizable-panels") ||
+            id.includes("sonner")
+          ) {
+            return "ui-vendor";
+          }
+
+          if (
+            id.includes("framer-motion") ||
+            id.includes("embla-carousel-react") ||
+            id.includes("recharts")
+          ) {
+            return "visual-vendor";
+          }
+
+          if (
+            id.includes("react-hook-form") ||
+            id.includes("@hookform") ||
+            id.includes("zod") ||
+            id.includes("clsx") ||
+            id.includes("class-variance-authority") ||
+            id.includes("tailwind-merge") ||
+            id.includes("nanoid")
+          ) {
+            return "utility-vendor";
+          }
+        },
+      },
+    },
   },
   server: {
     port: 3000,
