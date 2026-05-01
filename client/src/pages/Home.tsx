@@ -6,6 +6,7 @@ import { ThemeSelector } from '@/components/shared/ui/ThemeSelector';
 import { LazyCatalogPdfGenerator } from '@/components/domain/catalog/LazyCatalogPdfGenerator';
 import { Footer } from '@/components/app/layout/Footer';
 import { useCart } from '@/hooks/useCart';
+import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import { useTheme } from '@/hooks/useTheme';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -52,10 +53,12 @@ export default function Home() {
   const { user } = useAuth();
   const { theme } = useTheme();
   const { brand, isNikken } = useBrand();
+  const storefrontSettings = useStorefrontSettings(brand);
   const cart = useCart();
   const userId = user?.id ?? null;
   const activeProfileLabel = user?.name?.trim() || user?.email || 'tu perfil activo';
   const [favoriteCount, setFavoriteCount] = useState(0);
+  const [hasHeroImageError, setHasHeroImageError] = useState(false);
 
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
   const [quickBuyProduct, setQuickBuyProduct] = useState<CatalogProduct | null>(null);
@@ -162,6 +165,10 @@ export default function Home() {
   }, [brand]);
 
   useEffect(() => {
+    setHasHeroImageError(false);
+  }, [brand, storefrontSettings.heroImageUrl]);
+
+  useEffect(() => {
     const syncFavoriteCount = () => {
       try {
         setFavoriteCount(readBrandLikeIds(brand, userId).length);
@@ -233,6 +240,13 @@ export default function Home() {
     return matchesCategory && matchesSearch && matchesTheme;
   });
 
+  const heroEyebrow = storefrontSettings.heroEyebrow.trim();
+  const heroTitle = storefrontSettings.siteName.trim();
+  const heroSlogan = storefrontSettings.slogan.trim();
+  const heroDescription = storefrontSettings.heroDescription.trim();
+  const heroImageUrl = storefrontSettings.heroImageUrl.trim();
+  const shouldShowHeroImage = Boolean(heroImageUrl) && !hasHeroImageError;
+
   return (
     <div className="min-h-screen bg-background font-sans selection:bg-primary/20 transition-colors duration-500">
       <Navbar
@@ -247,53 +261,86 @@ export default function Home() {
 
       <main className="container relative mx-auto min-h-[80vh] px-4 py-8 md:py-12">
         {!searchQuery && !activeCategory ? (
-          <div className="mx-auto mb-12 max-w-3xl px-4 text-center md:mb-16">
-            <div className="mb-6 inline-flex flex-col items-center gap-4 sm:flex-row">
-              <div className="rounded-full bg-primary/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-primary transition-colors duration-500">
-                {isNikken ? 'Tecnologia Japonesa' : 'Coleccion 2026'}
-              </div>
-              {!isNikken ? <ThemeSelector /> : null}
-              {data.products ? <LazyCatalogPdfGenerator products={data.products} /> : null}
-            </div>
-            <h2 className="display mb-6 text-4xl font-black leading-tight text-foreground transition-colors duration-500 md:text-5xl lg:text-6xl">
-              {isNikken ? (
-                <>
-                  Transforma tu{' '}
-                  <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent transition-colors duration-500">
-                    Entorno
+          <div className="mx-auto mb-12 max-w-6xl md:mb-16">
+            <div className="grid gap-8 overflow-hidden rounded-[2.5rem] border border-primary/10 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.95),rgba(255,255,255,0.82)_45%,rgba(249,115,22,0.08)_100%)] p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.35)] transition-colors duration-500 md:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] md:p-10 lg:p-12">
+              <div className="flex flex-col justify-center">
+                <div className="mb-6 flex flex-wrap items-center gap-3">
+                  <div className="rounded-full bg-primary/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-primary transition-colors duration-500">
+                    {heroEyebrow || (isNikken ? 'Tecnologia Japonesa' : 'Coleccion 2026')}
+                  </div>
+                  {!isNikken ? <ThemeSelector /> : null}
+                  {data.products ? <LazyCatalogPdfGenerator products={data.products} /> : null}
+                </div>
+
+                <h2 className="display text-4xl font-black leading-tight text-foreground transition-colors duration-500 md:text-5xl lg:text-6xl">
+                  {heroTitle}
+                </h2>
+                <p className="mt-4 max-w-2xl text-lg font-semibold uppercase tracking-[0.2em] text-primary/80 transition-colors duration-500">
+                  {heroSlogan}
+                </p>
+                <p className="body mt-5 max-w-2xl text-lg leading-8 text-muted-foreground transition-colors duration-500">
+                  {heroDescription}
+                </p>
+
+                <div className="mt-8 inline-flex max-w-3xl flex-wrap items-center gap-2 rounded-2xl border border-primary/10 bg-background/80 px-4 py-3 text-sm text-muted-foreground shadow-sm transition-colors duration-500">
+                  <span className="font-semibold text-foreground/90">{activeProfileLabel}</span>
+                  <span className="hidden text-primary/50 sm:inline">|</span>
+                  <span>
+                    {favoriteCount} favorito{favoriteCount !== 1 ? 's' : ''} guardado
+                    {favoriteCount !== 1 ? 's' : ''} en {heroTitle}
                   </span>
-                </>
-              ) : (
-                <>
-                  Descubre tu{' '}
-                  <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent transition-colors duration-500">
-                    Bienestar
-                  </span>
-                </>
-              )}
-            </h2>
-            <p className="body text-lg text-muted-foreground transition-colors duration-500">
-              {isNikken
-                ? 'Lider mundial en bienestar y salud. Descubre como el agua, el aire, el descanso y la nutricion pueden cambiar tu vida con tecnologia magnetica avanzada.'
-                : 'Explora la linea completa de Natura. Cosmeticos y fragancias inspirados en la riqueza de la biodiversidad, creados para cuidar de ti y del planeta.'}
-            </p>
-            <div className="mt-6 inline-flex max-w-2xl flex-wrap items-center justify-center gap-2 rounded-2xl border border-primary/10 bg-background/80 px-4 py-3 text-sm text-muted-foreground shadow-sm transition-colors duration-500">
-              <span className="font-semibold text-foreground/90">{activeProfileLabel}</span>
-              <span className="hidden text-primary/50 sm:inline">|</span>
-              <span>
-                {favoriteCount} favorito{favoriteCount !== 1 ? 's' : ''} guardado
-                {favoriteCount !== 1 ? 's' : ''} en {isNikken ? 'Nikken' : 'Natura'}
-              </span>
-              <span className="hidden text-primary/50 md:inline">|</span>
-              <span className="hidden md:inline">
-                Tus likes y guardados se aplican a este perfil activo.
-              </span>
-              {hasLocalCatalogOverrides ? (
-                <>
                   <span className="hidden text-primary/50 md:inline">|</span>
-                  <span className="text-primary/80">Incluye ajustes locales del catalogo.</span>
-                </>
-              ) : null}
+                  <span className="hidden md:inline">
+                    Tus likes y guardados se aplican a este perfil activo.
+                  </span>
+                  {hasLocalCatalogOverrides ? (
+                    <>
+                      <span className="hidden text-primary/50 md:inline">|</span>
+                      <span className="text-primary/80">Incluye ajustes locales del catalogo.</span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="relative flex min-h-[260px] items-center justify-center">
+                <div className="absolute inset-8 rounded-[2rem] bg-gradient-to-br from-primary/15 via-transparent to-secondary/20 blur-2xl" />
+                <div className="relative flex w-full max-w-md flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white/85 p-4 shadow-[0_24px_50px_-30px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.28em] text-primary/70">
+                        {heroEyebrow || heroTitle}
+                      </p>
+                      <p className="mt-2 text-lg font-bold text-slate-900">{heroTitle}</p>
+                    </div>
+                    <div className="rounded-full bg-slate-900 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white">
+                      {isNikken ? 'Wellness' : 'Catalogo'}
+                    </div>
+                  </div>
+
+                  {shouldShowHeroImage ? (
+                    <div className="relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-primary/5 via-white to-secondary/10">
+                      <img
+                        src={heroImageUrl}
+                        alt={heroTitle}
+                        className="h-[280px] w-full object-cover md:h-[360px]"
+                        onError={() => setHasHeroImageError(true)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-[280px] flex-col justify-end rounded-[1.75rem] bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.16),transparent_35%),linear-gradient(160deg,rgba(255,255,255,0.98),rgba(248,250,252,0.9),rgba(241,245,249,0.86))] p-6 md:h-[360px]">
+                      <div className="max-w-xs rounded-[1.5rem] border border-primary/10 bg-white/80 p-5 shadow-sm backdrop-blur">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-primary/70">
+                          Seleccion activa
+                        </p>
+                        <p className="mt-3 text-2xl font-black text-slate-900">{heroTitle}</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                          {heroDescription}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         ) : null}

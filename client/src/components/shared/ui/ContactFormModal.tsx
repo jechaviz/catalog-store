@@ -58,12 +58,25 @@ export function ContactFormModal({
     const brandName = product.brand?.trim() || (brand === 'nikken' ? 'Nikken' : 'Natura');
     const normalizedBrand = brandName.toLowerCase();
     const fallbackImage = getProductFallbackImage(product.brand || brand);
+    const storefrontName = storefrontSettings.siteName.trim() || brandName;
+    const storefrontSlogan = storefrontSettings.slogan.trim();
     const configuredMessageTemplate = storefrontSettings.sellerMessageTemplate.trim();
     const sellerContactPhone = sellerPhone?.trim() || storefrontSettings.sellerPhone || CONFIG.SELLER.PHONE;
     const activeProfileLabel = user?.name?.trim() || user?.email?.trim() || '';
+    const catalogReference =
+        storefrontName.toLowerCase() === brandName.toLowerCase()
+            ? storefrontName
+            : `${storefrontName} de ${brandName}`;
+    const productContextLabel =
+        storefrontName.toLowerCase() === brandName.toLowerCase()
+            ? brandName
+            : `${storefrontName} · ${brandName}`;
+    const modalTitle = normalizedBrand === 'nikken'
+        ? `Asesoria rapida en ${storefrontName}`
+        : `Compra rapida en ${storefrontName}`;
     const quickHelpCopy = normalizedBrand === 'nikken'
-        ? 'Te ayudamos a confirmar disponibilidad y entrega por WhatsApp.'
-        : 'Te ayudamos a cerrar tu pedido por WhatsApp.';
+        ? `Te ayudamos desde ${storefrontName} a confirmar disponibilidad y entrega por WhatsApp.`
+        : `Te ayudamos desde ${storefrontName} a cerrar tu pedido por WhatsApp.`;
 
     const handleWhatsAppOrder = () => {
         const greeting = customerName.trim() ? `Hola, soy ${customerName.trim()}. ` : 'Hola. ';
@@ -76,7 +89,7 @@ export function ContactFormModal({
             ? `${templateWithoutGreeting} ${productLine}`.trim()
             : `Me interesa ${productLine}`;
         const profileReference = activeProfileLabel ? ` Mi perfil activo es ${activeProfileLabel}.` : '';
-        const message = `${greeting}${messageBody} que vi en el catalogo digital de ${brandName}.${locationInfo}${profileReference}`;
+        const message = `${greeting}${messageBody} que vi en el catalogo digital de ${catalogReference}.${locationInfo}${profileReference}`;
 
         window.open(
             `${CONFIG.SELLER.WHATSAPP_BASE_URL}${sellerContactPhone}?text=${encodeURIComponent(message)}`,
@@ -97,12 +110,21 @@ export function ContactFormModal({
             <DialogContent className="max-w-md w-11/12 bg-white/95 backdrop-blur-md rounded-[2rem] p-6 shadow-2xl">
                 <DialogHeader>
                     <DialogTitle className="heading text-xl font-bold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <span>Compra rapida de {brandName}</span>
+                        <span>{modalTitle}</span>
                         <span className="text-primary font-mono text-xl">${product.price.toFixed(2)}</span>
                     </DialogTitle>
                 </DialogHeader>
 
                 <div className="space-y-4 mt-2">
+                    <div className="rounded-2xl border border-primary/10 bg-secondary/10 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/70">
+                            {storefrontName}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            {storefrontSlogan || `Atencion directa para ${brandName}.`}
+                        </p>
+                    </div>
+
                     <p className="text-sm text-muted-foreground">
                         {quickHelpCopy}
                     </p>
@@ -120,7 +142,7 @@ export function ContactFormModal({
                         />
                         <div className="min-w-0">
                             <span className="font-semibold text-sm leading-tight block">{product.name}</span>
-                            <span className="text-xs text-muted-foreground">{brandName}</span>
+                            <span className="text-xs text-muted-foreground">{productContextLabel}</span>
                         </div>
                     </div>
 

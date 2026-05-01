@@ -10,15 +10,28 @@ import { Input } from '@/components/shared/ui/input';
 export function Footer() {
     const [phone, setPhone] = useState('');
     const { brand, isNikken } = useBrand();
-    const { sellerPhone } = useStorefrontSettings(brand);
+    const settings = useStorefrontSettings(brand);
     const [, setLocation] = useLocation();
 
     const brandName = isNikken ? 'Nikken' : 'Natura';
+    const siteName = settings.siteName.trim() || brandName;
+    const slogan = settings.slogan.trim();
+    const sellerPhone = settings.sellerPhone;
     const homePath = isNikken ? '/nikken' : '/';
     const profilePath = isNikken ? '/nikken/profile' : '/profile';
     const ordersPath = isNikken ? '/nikken/account/orders' : '/account/orders';
     const returnsPath = isNikken ? '/nikken/account/returns' : '/account/returns';
     const checkoutPath = isNikken ? '/nikken/checkout' : '/checkout';
+    const catalogDescription = isNikken
+        ? 'Bienestar, descanso e hidratacion con acompanamiento cercano para cada pedido.'
+        : 'Fragancias, cuidado personal y belleza consciente para acompanarte todos los dias.';
+    const footerDescription = slogan ? `${slogan}. ${catalogDescription}` : catalogDescription;
+    const subscriptionDescription = isNikken
+        ? `Dejanos tu numero y te compartimos promociones, novedades y ayuda para tus pedidos en ${siteName}.`
+        : `Dejanos tu numero y te compartimos lanzamientos, promociones y el catalogo vigente de ${siteName}.`;
+    const legalDisclaimer = isNikken
+        ? 'Este sitio es operado por un distribuidor independiente y no representa a Nikken Inc.'
+        : 'Sitio operado por una consultora independiente para compartir catalogo y tomar pedidos.';
 
     const quickLinks = [
         { label: isNikken ? 'Explorar bienestar' : 'Explorar catalogo', href: homePath },
@@ -36,7 +49,7 @@ export function Footer() {
         if (normalizedPhone.length < 10) return;
 
         const message = encodeURIComponent(
-            `Hola, quiero recibir novedades del catalogo de ${brandName}. Mi numero es: ${normalizedPhone}`
+            `Hola, quiero recibir novedades de ${siteName}. Mi numero es: ${normalizedPhone}`
         );
 
         window.open(
@@ -52,20 +65,10 @@ export function Footer() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
                     <div>
                         <h2 className="display text-2xl font-bold text-primary mb-4">
-                            {isNikken ? (
-                                <>
-                                    Nikken <span className="text-secondary font-light">Wellness</span>
-                                </>
-                            ) : (
-                                <>
-                                    Natura <span className="text-secondary">Catalogo</span>
-                                </>
-                            )}
+                            {siteName}
                         </h2>
                         <p className="body text-muted-foreground mb-6">
-                            {isNikken
-                                ? 'Bienestar, descanso e hidratacion con acompanamiento cercano para cada pedido.'
-                                : 'Fragancias, cuidado personal y belleza consciente para acompanarte todos los dias.'}
+                            {footerDescription}
                         </p>
                     </div>
 
@@ -92,9 +95,7 @@ export function Footer() {
                             Novedades por WhatsApp
                         </h3>
                         <p className="body text-sm text-muted-foreground mb-4">
-                            {isNikken
-                                ? 'Dejanos tu numero y te compartimos promociones, novedades y ayuda para tus pedidos Nikken.'
-                                : 'Dejanos tu numero y te compartimos lanzamientos, promociones y el catalogo vigente de Natura.'}
+                            {subscriptionDescription}
                         </p>
                         <form onSubmit={handleSubscribe} className="flex gap-2 relative">
                             <Input
@@ -120,11 +121,9 @@ export function Footer() {
                 </div>
 
                 <div className="pt-8 border-t border-primary/10 text-center body text-sm text-muted-foreground space-y-1">
-                    <p>Copyright {new Date().getFullYear()} {isNikken ? 'Distribuidor Independiente Nikken' : 'Catalogo Natura'}.</p>
+                    <p>Copyright {new Date().getFullYear()} {siteName}.</p>
                     <p className="text-xs opacity-70">
-                        {isNikken
-                            ? 'Este sitio es operado por un distribuidor independiente y no representa a Nikken Inc.'
-                            : 'Sitio operado por una consultora independiente para compartir catalogo y tomar pedidos.'}
+                        {legalDisclaimer}
                     </p>
                 </div>
             </div>

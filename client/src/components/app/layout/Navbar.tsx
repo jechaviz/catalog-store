@@ -60,6 +60,7 @@ export function Navbar({
   const [, setLocation] = useLocation();
   const [favoriteCount, setFavoriteCount] = useState(0);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(true);
+  const [hasLogoError, setHasLogoError] = useState(false);
   const homePath = isNikken ? '/nikken' : '/';
   const favoritesPath = isNikken ? '/nikken/account/favorites' : '/account/favorites';
   const mobileSearchInputId = `${brand}-navbar-mobile-search`;
@@ -68,6 +69,9 @@ export function Navbar({
   const profileName = user?.name || user?.email || 'Mi cuenta';
   const profileInitial = profileName.trim().charAt(0).toUpperCase() || '?';
   const profileRoleLabel = isAdmin ? 'Admin' : 'Cliente';
+  const logoImageUrl = settings.logoImageUrl.trim();
+  const shouldShowLogo = Boolean(logoImageUrl) && !hasLogoError;
+  const brandInitial = settings.siteName.trim().charAt(0).toUpperCase() || brand.charAt(0).toUpperCase();
 
   useEffect(() => {
     const syncFavoriteCount = () => {
@@ -101,6 +105,10 @@ export function Navbar({
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [brand, userId]);
+
+  useEffect(() => {
+    setHasLogoError(false);
+  }, [logoImageUrl, brand]);
 
   const handleLogout = () => {
     logout();
@@ -137,13 +145,29 @@ export function Navbar({
             onCategorySelect('');
           }}
         >
-          <div className="flex flex-col min-w-0">
-            <h1 className="display text-lg sm:text-2xl md:text-3xl font-bold text-primary tracking-tight truncate">
-              {settings.siteName}
-            </h1>
-            <span className="hidden sm:block text-secondary text-[10px] uppercase tracking-[0.15em] font-bold mt-1 truncate">
-              {settings.slogan}
-            </span>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/10 via-white to-secondary/15 shadow-sm">
+              {shouldShowLogo ? (
+                <img
+                  src={logoImageUrl}
+                  alt={`Logo de ${settings.siteName}`}
+                  className="h-full w-full object-cover"
+                  onError={() => setHasLogoError(true)}
+                />
+              ) : (
+                <span className="text-sm sm:text-base font-bold text-primary" aria-hidden="true">
+                  {brandInitial}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <h1 className="display text-lg sm:text-2xl md:text-3xl font-bold text-primary tracking-tight truncate">
+                {settings.siteName}
+              </h1>
+              <span className="hidden sm:block text-secondary text-[10px] uppercase tracking-[0.15em] font-bold mt-1 truncate">
+                {settings.slogan}
+              </span>
+            </div>
           </div>
         </div>
 

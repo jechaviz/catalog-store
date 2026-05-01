@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import type { CatalogProduct } from '@/lib/dataFetcher';
 import { getAnalogousColor } from '@/hooks/useColorExtraction';
 import { CONFIG } from '@/config';
+import type { Brand } from '@/contexts/BrandContext';
+import { readStorefrontSettings } from '@/lib/storefrontSettings';
 
 interface PdfGeneratorProps {
     products: CatalogProduct[];
@@ -15,12 +17,27 @@ const KNOWN_BRANDS: Record<string, string> = {
     nikken: 'Nikken',
 };
 
+const isSupportedBrand = (brand: string): brand is Brand => brand === 'natura' || brand === 'nikken';
+
 const toFileSafeSegment = (value: string) =>
     value
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '');
+
+const readCatalogStorefrontBranding = (brand: Brand) => {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+
+    try {
+        return readStorefrontSettings(brand);
+    } catch (error) {
+        console.warn('No se pudo leer el branding configurable para el PDF.', { brand, error });
+        return null;
+    }
+};
 
 const getCatalogBranding = (products: CatalogProduct[]) => {
     const normalizedBrands = Array.from(
@@ -31,17 +48,31 @@ const getCatalogBranding = (products: CatalogProduct[]) => {
         )
     );
 
-    const displayName =
-        normalizedBrands.length === 1
-            ? KNOWN_BRANDS[normalizedBrands[0]] || products[0]?.brand?.trim() || 'Catalogo'
+    const singleBrand = normalizedBrands.length === 1 ? normalizedBrands[0] : null;
+    const defaultDisplayName =
+        singleBrand
+            ? KNOWN_BRANDS[singleBrand] || products[0]?.brand?.trim() || 'Catalogo'
             : normalizedBrands.length > 1
                 ? 'Catalogo Multimarca'
                 : 'Catalogo';
+    const storefrontBranding =
+        singleBrand && isSupportedBrand(singleBrand)
+            ? readCatalogStorefrontBranding(singleBrand)
+            : null;
+    const displayName =
+        normalizedBrands.length === 1
+            ? storefrontBranding?.siteName?.trim() || defaultDisplayName
+            : defaultDisplayName;
+    const subtitle =
+        normalizedBrands.length === 1
+            ? storefrontBranding?.slogan?.trim() || `Catalogo Digital ${CONFIG.YEAR}`
+            : `Catalogo Digital ${CONFIG.YEAR}`;
 
     const fileSegment = toFileSafeSegment(displayName);
 
     return {
         displayName,
+        subtitle,
         fileName: fileSegment ? `Catalogo_${fileSegment}_Digital.pdf` : 'Catalogo_Digital.pdf',
     };
 };
@@ -175,7 +206,7 @@ export function CatalogPdfGenerator({ products }: PdfGeneratorProps) {
                         <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 50px; border-bottom: 2px solid ${primaryColor}40; padding-bottom: 20px; position: relative; z-index: 10; width: 100%;">
                             <div style="flex: 1;">
                                 <h1 style="margin: 0; color: ${primaryColor}; font-size: 38px; font-weight: 900; letter-spacing: -1.5px;">${catalogBranding.displayName}</h1>
-                                <p style="margin: 5px 0 0; color: #666; font-size: 14px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">Catálogo Digital ${CONFIG.YEAR}</p>
+                                <p style="margin: 5px 0 0; color: #666; font-size: 14px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">${catalogBranding.subtitle}</p>
                             </div>
                             <div style="text-align: right;">
                                 <span style="display: inline-block; padding: 6px 16px; background-color: ${primaryColor}; color: white; border-radius: 100px; font-size: 14px; font-weight: 800; text-transform: uppercase;">
