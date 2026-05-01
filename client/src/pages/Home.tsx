@@ -48,6 +48,111 @@ type LocalCatalogSummary = {
   deletedProductsCount: number;
 };
 
+type LocalCategorySummary = {
+  activeCategoriesCount: number;
+  deletedCategoriesCount: number;
+};
+
+const LOCAL_CATEGORY_EVENT_NAMES = [
+  'catalog-local-categories-changed',
+  'catalog-local-category-changed',
+] as const;
+const LOCAL_CATEGORY_STORAGE_PREFIXES = ['catalog_local_categories_', 'catalog_local_category_'] as const;
+
+function safeParseJson<T>(rawValue: string | null, fallbackValue: T): T {
+  if (!rawValue) {
+    return fallbackValue;
+  }
+
+  try {
+    return JSON.parse(rawValue) as T;
+  } catch {
+    return fallbackValue;
+  }
+}
+
+function countArrayEntries(value: unknown) {
+  return Array.isArray(value) ? value.filter((item) => item !== null && item !== undefined).length : 0;
+}
+
+function getLocalCategoryStorageKeys(brand: 'natura' | 'nikken') {
+  return LOCAL_CATEGORY_STORAGE_PREFIXES.map((prefix) => `${prefix}${brand}`);
+}
+
+function parseLocalCategorySummary(rawValue: string | null): LocalCategorySummary {
+  const parsedValue = safeParseJson<unknown>(rawValue, null);
+
+  if (Array.isArray(parsedValue)) {
+    return {
+      activeCategoriesCount: countArrayEntries(parsedValue),
+      deletedCategoriesCount: 0,
+    };
+  }
+
+  if (!parsedValue || typeof parsedValue !== 'object') {
+    return {
+      activeCategoriesCount: 0,
+      deletedCategoriesCount: 0,
+    };
+  }
+
+  const record = parsedValue as Record<string, unknown>;
+
+  return {
+    activeCategoriesCount:
+      countArrayEntries(record.categories) ||
+      countArrayEntries(record.items) ||
+      countArrayEntries(record.overrides),
+    deletedCategoriesCount:
+      countArrayEntries(record.deletedCategoryIds) ||
+      countArrayEntries(record.deletedIds) ||
+      countArrayEntries(record.removedCategoryIds),
+  };
+}
+
+function getLocalCategorySummary(brand: 'natura' | 'nikken'): LocalCategorySummary {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return {
+      activeCategoriesCount: 0,
+      deletedCategoriesCount: 0,
+    };
+  }
+
+  return getLocalCategoryStorageKeys(brand).reduce<LocalCategorySummary>(
+    (summary, storageKey) => {
+      const partialSummary = parseLocalCategorySummary(localStorage.getItem(storageKey));
+
+      return {
+        activeCategoriesCount: summary.activeCategoriesCount + partialSummary.activeCategoriesCount,
+        deletedCategoriesCount:
+          summary.deletedCategoriesCount + partialSummary.deletedCategoriesCount,
+      };
+    },
+    {
+      activeCategoriesCount: 0,
+      deletedCategoriesCount: 0,
+    },
+  );
+}
+
+function isLocalCategoryStorageKeyForBrand(
+  key: string | null | undefined,
+  brand: 'natura' | 'nikken',
+) {
+  if (!key) {
+    return false;
+  }
+
+  const normalizedKey = key.toLowerCase();
+
+  return (
+    getLocalCategoryStorageKeys(brand).includes(key) ||
+    (normalizedKey.includes(brand) &&
+      normalizedKey.includes('local') &&
+      normalizedKey.includes('categor'))
+  );
+}
+
 function getLocalCatalogSummary(brand: 'natura' | 'nikken'): LocalCatalogSummary {
   const overrides = readLocalCatalogOverrides(brand);
   const customProductsCount = overrides.products.filter((product) =>
@@ -69,6 +174,11 @@ export default function Home() {
     customProductsCount: 0,
     editedProductsCount: 0,
     deletedProductsCount: 0,
+  });
+  const [hasLocalCategoryOverrides, setHasLocalCategoryOverrides] = useState(false);
+  const [localCategorySummary, setLocalCategorySummary] = useState<LocalCategorySummary>({
+    activeCategoriesCount: 0,
+    deletedCategoriesCount: 0,
   });
   const [activeCategory, setActiveCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,9 +204,14 @@ export default function Home() {
     const syncLocalCatalogState = () => {
       try {
         const overrides = readLocalCatalogOverrides(brand);
+        const categorySummary = getLocalCategorySummary(brand);
         setLocalCatalogSummary(getLocalCatalogSummary(brand));
         setHasLocalCatalogOverrides(
           overrides.products.length > 0 || overrides.deletedProductIds.length > 0,
+        );
+        setLocalCategorySummary(categorySummary);
+        setHasLocalCategoryOverrides(
+          categorySummary.activeCategoriesCount > 0 || categorySummary.deletedCategoriesCount > 0,
         );
       } catch {
         setHasLocalCatalogOverrides(false);
@@ -104,6 +219,11 @@ export default function Home() {
           customProductsCount: 0,
           editedProductsCount: 0,
           deletedProductsCount: 0,
+        });
+        setHasLocalCategoryOverrides(false);
+        setLocalCategorySummary({
+          activeCategoriesCount: 0,
+          deletedCategoriesCount: 0,
         });
       }
     };
@@ -118,6 +238,7 @@ export default function Home() {
         }
 
         const overrides = readLocalCatalogOverrides(brand);
+        const categorySummary = getLocalCategorySummary(brand);
         setLocalCatalogSummary(getLocalCatalogSummary(brand));
         const nextCatalogInfo = catalogInfo
           ? {
@@ -130,12 +251,23 @@ export default function Home() {
         setHasLocalCatalogOverrides(
           overrides.products.length > 0 || overrides.deletedProductIds.length > 0,
         );
+        setLocalCategorySummary(categorySummary);
+        setHasLocalCategoryOverrides(
+          categorySummary.activeCategoriesCount > 0 || categorySummary.deletedCategoriesCount > 0,
+        );
 
         if (!nextCatalogInfo) {
+          setActiveCategory('');
           setSelectedProduct(null);
           setQuickBuyProduct(null);
           return;
         }
+
+        setActiveCategory((currentCategory) =>
+          currentCategory && !nextCatalogInfo.categories.some((category) => category.id === currentCategory)
+            ? ''
+            : currentCategory,
+        );
 
         const productsById = new Map(
           nextCatalogInfo.products.map((product) => [product.id, product]),
@@ -169,8 +301,19 @@ export default function Home() {
       }
     };
 
+    const handleLocalCategoriesChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ brand?: string; storageKey?: string }>).detail;
+
+      if (detail?.brand === brand || isLocalCategoryStorageKeyForBrand(detail?.storageKey, brand)) {
+        void loadData();
+      }
+    };
+
     const handleStorageChange = (event: StorageEvent) => {
-      if (isLocalCatalogStorageKeyForBrand(event.key, brand)) {
+      if (
+        isLocalCatalogStorageKeyForBrand(event.key, brand) ||
+        isLocalCategoryStorageKeyForBrand(event.key, brand)
+      ) {
         void loadData();
       }
     };
@@ -180,6 +323,9 @@ export default function Home() {
       'catalog-local-products-changed',
       handleLocalProductsChanged as EventListener,
     );
+    LOCAL_CATEGORY_EVENT_NAMES.forEach((eventName) => {
+      window.addEventListener(eventName, handleLocalCategoriesChanged as EventListener);
+    });
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
@@ -188,6 +334,9 @@ export default function Home() {
         'catalog-local-products-changed',
         handleLocalProductsChanged as EventListener,
       );
+      LOCAL_CATEGORY_EVENT_NAMES.forEach((eventName) => {
+        window.removeEventListener(eventName, handleLocalCategoriesChanged as EventListener);
+      });
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [brand]);
@@ -335,6 +484,17 @@ export default function Home() {
                       </span>
                     </>
                   ) : null}
+                  {hasLocalCategoryOverrides ? (
+                    <>
+                      <span className="hidden text-primary/50 md:inline">|</span>
+                      <span className="text-primary/70">
+                        {localCategorySummary.activeCategoriesCount} categoria
+                        {localCategorySummary.activeCategoriesCount === 1 ? '' : 's'} local
+                        {localCategorySummary.activeCategoriesCount === 1 ? '' : 'es'} activa
+                        {localCategorySummary.activeCategoriesCount === 1 ? '' : 's'}
+                      </span>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
@@ -401,6 +561,15 @@ export default function Home() {
             {hasLocalCatalogOverrides ? (
               <p className="ml-4 mt-1 text-xs text-primary/80">
                 Vista actualizada con {localCatalogSummary.customProductsCount} nuevo{localCatalogSummary.customProductsCount === 1 ? '' : 's'}, {localCatalogSummary.editedProductsCount} editado{localCatalogSummary.editedProductsCount === 1 ? '' : 's'} y {localCatalogSummary.deletedProductsCount} oculto{localCatalogSummary.deletedProductsCount === 1 ? '' : 's'} localmente.
+              </p>
+            ) : null}
+            {hasLocalCategoryOverrides ? (
+              <p className="ml-4 mt-1 text-xs text-primary/70">
+                Categorias locales activas: {localCategorySummary.activeCategoriesCount}
+                {localCategorySummary.deletedCategoriesCount > 0
+                  ? `, ${localCategorySummary.deletedCategoriesCount} oculta${localCategorySummary.deletedCategoriesCount === 1 ? '' : 's'}`
+                  : ''}
+                .
               </p>
             ) : null}
           </div>

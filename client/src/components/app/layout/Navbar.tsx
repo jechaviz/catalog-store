@@ -45,6 +45,100 @@ interface NavbarProps {
   products: CatalogProduct[];
 }
 
+const LOCAL_CATEGORY_STORAGE_PREFIXES = [
+  'catalog_local_categories_',
+  'catalog_local_category_',
+  'categories_local_',
+  'category_local_',
+] as const;
+
+const LOCAL_CATEGORY_EVENT_NAMES = [
+  'catalog-local-categories-changed',
+  'catalog-local-category-changed',
+] as const;
+
+const LOCAL_CATEGORY_ID_PREFIXES = [
+  'local-category-',
+  'draft-category-',
+  'copy-category-',
+  'custom-category-',
+  'local-',
+  'draft-',
+  'copy-',
+  'custom-',
+] as const;
+
+function isLikelyLocalCategoryId(categoryId: string) {
+  const normalizedCategoryId = categoryId.trim().toLowerCase();
+  return LOCAL_CATEGORY_ID_PREFIXES.some((prefix) => normalizedCategoryId.startsWith(prefix));
+}
+
+function isLocalCategoryStorageKeyForBrand(key: string | null | undefined, brand: string) {
+  if (!key) {
+    return false;
+  }
+
+  return LOCAL_CATEGORY_STORAGE_PREFIXES.some(
+    (prefix) => key === `${prefix}${brand}` || key.startsWith(`${prefix}${brand}_`),
+  );
+}
+
+function getSerializedLocalCategoryCount(value: unknown): number {
+  if (!value) {
+    return 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length;
+  }
+
+  if (typeof value !== 'object') {
+    return 0;
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  if (Array.isArray(candidate.categories)) {
+    return candidate.categories.length;
+  }
+
+  if (Array.isArray(candidate.items)) {
+    return candidate.items.length;
+  }
+
+  if (Array.isArray(candidate.list)) {
+    return candidate.list.length;
+  }
+
+  if (candidate.entities && typeof candidate.entities === 'object') {
+    return Object.keys(candidate.entities as Record<string, unknown>).length;
+  }
+
+  return 0;
+}
+
+function countLocalCategoriesForBrand(brand: string) {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return 0;
+  }
+
+  return Object.keys(localStorage)
+    .filter((key) => isLocalCategoryStorageKeyForBrand(key, brand))
+    .reduce((count, key) => {
+      const rawValue = localStorage.getItem(key);
+
+      if (!rawValue) {
+        return count;
+      }
+
+      try {
+        return count + getSerializedLocalCategoryCount(JSON.parse(rawValue));
+      } catch {
+        return count;
+      }
+    }, 0);
+}
+
 export function Navbar({
   categories,
   activeCategory,
@@ -61,6 +155,7 @@ export function Navbar({
   const [favoriteCount, setFavoriteCount] = useState(0);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(true);
   const [hasLogoError, setHasLogoError] = useState(false);
+  const [localCategoryCount, setLocalCategoryCount] = useState(0);
   const homePath = isNikken ? '/nikken' : '/';
   const favoritesPath = isNikken ? '/nikken/account/favorites' : '/account/favorites';
   const mobileSearchInputId = `${brand}-navbar-mobile-search`;
@@ -109,6 +204,56 @@ export function Navbar({
   useEffect(() => {
     setHasLogoError(false);
   }, [logoImageUrl, brand]);
+
+  useEffect(() => {
+    const syncLocalCategoryCount = () => {
+      try {
+        setLocalCategoryCount(countLocalCategoriesForBrand(brand));
+      } catch {
+        setLocalCategoryCount(0);
+      }
+    };
+
+    const handleLocalCategoriesChanged = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ brand?: string; storageKey?: string }>
+      ).detail;
+
+      if (
+        !detail?.brand ||
+        detail.brand === brand ||
+        isLocalCategoryStorageKeyForBrand(detail.storageKey, brand)
+      ) {
+        syncLocalCategoryCount();
+      }
+    };
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (!event.key || isLocalCategoryStorageKeyForBrand(event.key, brand)) {
+        syncLocalCategoryCount();
+      }
+    };
+
+    syncLocalCategoryCount();
+    LOCAL_CATEGORY_EVENT_NAMES.forEach((eventName) => {
+      window.addEventListener(eventName, handleLocalCategoriesChanged as EventListener);
+    });
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      LOCAL_CATEGORY_EVENT_NAMES.forEach((eventName) => {
+        window.removeEventListener(eventName, handleLocalCategoriesChanged as EventListener);
+      });
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [brand]);
+
+  const localCategoriesInView = categories.filter((category) =>
+    isLikelyLocalCategoryId(category.id),
+  ).length;
+  const hasLocalCategoriesApplied = localCategoryCount > 0 || localCategoriesInView > 0;
+  const localCategoryBadgeLabel =
+    localCategoryCount > 0 ? `${localCategoryCount} locales` : 'Locales activas';
 
   const handleLogout = () => {
     logout();
@@ -429,17 +574,37 @@ export function Navbar({
           >
             Todos
           </button>
+          {hasLocalCategoriesApplied ? (
+            <span
+              className="shrink-0 inline-flex items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700"
+              title={`La marca activa tiene categorias locales aplicadas en ${settings.siteName}.`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+              <span>{localCategoryBadgeLabel}</span>
+            </span>
+          ) : null}
           {categories.map((category) => (
             <button
               key={category.id}
               onClick={() => onCategorySelect(category.id)}
-              className={`whitespace-nowrap heading text-sm md:text-base font-bold transition-colors py-1 px-3 md:px-0 rounded-full md:rounded-none md:border-b-2 ${
+              title={category.name}
+              className={`inline-flex max-w-[11rem] shrink-0 items-center gap-2 whitespace-nowrap heading text-sm md:max-w-[14rem] md:text-base font-bold transition-colors py-1 px-3 md:px-0 rounded-full md:rounded-none md:border-b-2 ${
                 activeCategory === category.id
                   ? 'bg-primary text-white md:bg-transparent md:text-primary md:border-primary'
                   : 'text-foreground/70 hover:text-primary md:border-transparent md:hover:border-primary/50'
               }`}
             >
-              {category.name}
+              <span className="block truncate">{category.name}</span>
+              {isLikelyLocalCategoryId(category.id) ? (
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    activeCategory === category.id
+                      ? 'bg-white/90 md:bg-primary'
+                      : 'bg-amber-500/80'
+                  }`}
+                  aria-hidden="true"
+                />
+              ) : null}
             </button>
           ))}
         </div>
