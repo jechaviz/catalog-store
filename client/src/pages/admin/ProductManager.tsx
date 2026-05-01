@@ -9,8 +9,6 @@ import {
   Trash2,
   Plus,
   MoreVertical,
-  Check,
-  X,
   Download,
   ChevronDown,
   Copy,
@@ -61,9 +59,11 @@ import {
   SelectValue,
 } from '@/components/shared/ui/select';
 import { Badge } from '@/components/shared/ui/badge';
+import { Textarea } from '@/components/shared/ui/textarea';
+import { Switch } from '@/components/shared/ui/switch';
+import { ScrollArea } from '@/components/shared/ui/scroll-area';
 import { getProductFallbackImage } from '@/lib/storefrontStorage';
 import {
-  applyLocalCatalogOverrides,
   clearLocalCatalogOverrides,
   deleteLocalCatalogProduct,
   isLocalCatalogStorageKeyForBrand,
@@ -72,23 +72,82 @@ import {
 } from '@/lib/adminCatalogStorage';
 
 type StockFilter = 'all' | 'in-stock' | 'out-of-stock';
+type EditorMode = 'create' | 'edit';
 
 interface DraftProduct {
   name: string;
   subBrand: string;
   categoryId: string;
-  price: string;
   description: string;
+  price: string;
+  imageUrl: string;
   inStock: boolean;
+  deliveryTime: string;
+  deliveryMethodsText: string;
+  benefitsText: string;
 }
 
 function brandLabel(brand: string) {
   return brand === 'nikken' ? 'Nikken' : 'Natura';
 }
 
+function getDefaultCategoryId(categories: Category[]) {
+  return categories[0]?.id || 'uncategorized';
+}
+
+function getDefaultDeliveryTime(brand: 'natura' | 'nikken') {
+  return brand === 'nikken' ? '3-5 dias habiles' : 'Entrega Inmediata';
+}
+
+function getDefaultDeliveryMethodsText(brand: 'natura' | 'nikken') {
+  return brand === 'nikken'
+    ? 'Envio nacional'
+    : 'Envio a domicilio';
+}
+
+function createEmptyDraft(brand: 'natura' | 'nikken', categories: Category[]): DraftProduct {
+  return {
+    name: '',
+    subBrand: '',
+    categoryId: getDefaultCategoryId(categories),
+    description: '',
+    price: '',
+    imageUrl: '',
+    inStock: true,
+    deliveryTime: getDefaultDeliveryTime(brand),
+    deliveryMethodsText: getDefaultDeliveryMethodsText(brand),
+    benefitsText: '',
+  };
+}
+
+function normalizeListInput(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\n,]+/)
+        .map(item => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function buildDraftFromProduct(product: CatalogProduct): DraftProduct {
+  return {
+    name: product.name,
+    subBrand: product.subBrand,
+    categoryId: product.categoryId,
+    description: product.description,
+    price: String(product.price),
+    imageUrl: product.imageUrl,
+    inStock: product.inStock,
+    deliveryTime: product.deliveryTime,
+    deliveryMethodsText: product.deliveryMethods.join('\n'),
+    benefitsText: product.benefits.join('\n'),
+  };
+}
+
 export default function ProductManager() {
   const { brand } = useBrand();
-  const [baseProducts, setBaseProducts] = useState<CatalogProduct[]>([]);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,65 +155,58 @@ export default function ProductManager() {
   const [searchTerm, setSearchTerm] = useState('');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editedPrice, setEditedPrice] = useState('');
-  const [createOpen, setCreateOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<EditorMode>('create');
+  const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CatalogProduct | null>(null);
   const [clearLocalChangesOpen, setClearLocalChangesOpen] = useState(false);
-  const [draft, setDraft] = useState<DraftProduct>({
-    name: '',
-    subBrand: '',
-    categoryId: 'all',
-    price: '',
-    description: '',
-    inStock: true,
-  });
+  const [draft, setDraft] = useState<DraftProduct>(() => createEmptyDraft(brand, []));
+
+  const loadCatalog = async (
+    currentBrand: 'natura' | 'nikken' = brand,
+    options?: { preserveDraft?: boolean },
+  ) => {
+    setLoading(true);
+    try {
+      const data = await fetchCatalogData(currentBrand);
+      if (!data) return;
+
+      setProducts(data.products);
+      setCategories(data.categories);
+
+      const localOverrides = readLocalCatalogOverrides(currentBrand);
+      setHasLocalChanges(
+        localOverrides.products.length > 0 || localOverrides.deletedProductIds.length > 0,
+      );
+
+      if (!options?.preserveDraft) {
+        setDraft(createEmptyDraft(currentBrand, data.categories));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const data = await fetchCatalogData(brand);
-        if (data) {
-          const localOverrides = readLocalCatalogOverrides(brand);
-          setBaseProducts(data.products);
-          setProducts(applyLocalCatalogOverrides(data.products, localOverrides));
-          setCategories(data.categories);
-          setHasLocalChanges(
-            localOverrides.products.length > 0 || localOverrides.deletedProductIds.length > 0
-          );
-          const defaultCategory = data.categories[0]?.id || 'uncategorized';
-          setDraft({
-            name: '',
-            subBrand: '',
-            categoryId: defaultCategory,
-            price: '',
-            description: '',
-            inStock: true,
-          });
-          setCategoryFilter('all');
-          setEditingId(null);
-          setEditedPrice('');
-        }
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    setCategoryFilter('all');
+    setSearchTerm('');
+    setEditorOpen(false);
+    setEditorMode('create');
+    setEditingTargetId(null);
+    setDeleteTarget(null);
+    setClearLocalChangesOpen(false);
+    setDraft(createEmptyDraft(brand, []));
+    void loadCatalog(brand);
   }, [brand]);
 
   useEffect(() => {
-    const syncLocalOverrides = () => {
-      const overrides = readLocalCatalogOverrides(brand);
-      setHasLocalChanges(
-        overrides.products.length > 0 || overrides.deletedProductIds.length > 0
-      );
-      setProducts(applyLocalCatalogOverrides(baseProducts, overrides));
+    const syncCatalog = () => {
+      void loadCatalog(brand, { preserveDraft: editorOpen });
     };
 
     const handleStorageEvent = (event: StorageEvent) => {
       if (isLocalCatalogStorageKeyForBrand(event.key, brand)) {
-        syncLocalOverrides();
+        syncCatalog();
       }
     };
 
@@ -164,7 +216,7 @@ export default function ProductManager() {
         customEvent.detail?.brand === brand ||
         isLocalCatalogStorageKeyForBrand(customEvent.detail?.storageKey, brand)
       ) {
-        syncLocalOverrides();
+        syncCatalog();
       }
     };
 
@@ -175,132 +227,170 @@ export default function ProductManager() {
       window.removeEventListener('storage', handleStorageEvent);
       window.removeEventListener('catalog-local-products-changed', handleLocalCatalogEvent);
     };
-  }, [brand, baseProducts]);
+  }, [brand, editorOpen]);
 
   const categoryMap = useMemo(
     () => new Map(categories.map(category => [category.id, category.name])),
-    [categories]
+    [categories],
   );
 
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
+      const search = searchTerm.toLowerCase();
       const matchesSearch =
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.subBrand.toLowerCase().includes(searchTerm.toLowerCase());
+        product.name.toLowerCase().includes(search) ||
+        product.subBrand.toLowerCase().includes(search) ||
+        product.description.toLowerCase().includes(search);
       const matchesStock =
         stockFilter === 'all' ||
         (stockFilter === 'in-stock' && product.inStock) ||
         (stockFilter === 'out-of-stock' && !product.inStock);
-      const matchesCategory =
-        categoryFilter === 'all' || product.categoryId === categoryFilter;
+      const matchesCategory = categoryFilter === 'all' || product.categoryId === categoryFilter;
+
       return matchesSearch && matchesStock && matchesCategory;
     });
   }, [products, searchTerm, stockFilter, categoryFilter]);
 
   const exportProducts = filteredProducts;
+  const editingTarget = useMemo(
+    () => products.find(product => product.id === editingTargetId) ?? null,
+    [products, editingTargetId],
+  );
+  const previewBenefits = useMemo(() => normalizeListInput(draft.benefitsText), [draft.benefitsText]);
+  const previewDeliveryMethods = useMemo(
+    () => normalizeListInput(draft.deliveryMethodsText),
+    [draft.deliveryMethodsText],
+  );
+  const previewImageUrl = draft.imageUrl.trim() || getProductFallbackImage(brand);
 
-  const openCreateDialog = () => {
-    setDraft(prev => ({
-      ...prev,
-      categoryId: categories[0]?.id || prev.categoryId || 'uncategorized',
-    }));
-    setCreateOpen(true);
+  const closeEditor = () => {
+    setEditorOpen(false);
+    setEditorMode('create');
+    setEditingTargetId(null);
+    setDraft(createEmptyDraft(brand, categories));
   };
 
-  const handleCreateProduct = () => {
-    const parsedPrice = Number(draft.price);
-    if (!draft.name.trim() || !draft.price || Number.isNaN(parsedPrice) || parsedPrice <= 0) {
-      toast.error('Completa un nombre y un precio valido.');
+  const openCreateDialog = () => {
+    setEditorMode('create');
+    setEditingTargetId(null);
+    setDraft(createEmptyDraft(brand, categories));
+    setEditorOpen(true);
+  };
+
+  const openEditDialog = (product: CatalogProduct) => {
+    setEditorMode('edit');
+    setEditingTargetId(product.id);
+    setDraft(buildDraftFromProduct(product));
+    setEditorOpen(true);
+  };
+
+  const openDuplicateDialog = (product: CatalogProduct) => {
+    setEditorMode('create');
+    setEditingTargetId(null);
+    setDraft({
+      ...buildDraftFromProduct(product),
+      name: `${product.name} Copia`,
+    });
+    setEditorOpen(true);
+  };
+
+  const handleEditorOpenChange = (open: boolean) => {
+    if (!open) {
+      closeEditor();
       return;
     }
 
-    const newProduct: CatalogProduct = {
-      id: `draft-${Date.now()}`,
-      name: draft.name.trim(),
-      brand: brandLabel(brand),
-      subBrand: draft.subBrand.trim(),
-      categoryId: draft.categoryId === 'all' ? categories[0]?.id || 'uncategorized' : draft.categoryId,
-      gender: 'unisex',
-      description: draft.description.trim() || `Nuevo producto de ${brandLabel(brand)} agregado localmente.`,
-      benefits: [],
-      price: parsedPrice,
-      imageUrl: getProductFallbackImage(brand),
-      inStock: draft.inStock,
-      deliveryTime: 'Entrega Inmediata',
-      deliveryMethods: [brand === 'nikken' ? 'Envio nacional' : 'Envio a domicilio'],
-    };
-
-    setProducts(prev => [newProduct, ...prev]);
-    upsertLocalCatalogProduct(brand, newProduct);
-    setHasLocalChanges(true);
-    setCreateOpen(false);
-    setDraft({
-      name: '',
-      subBrand: '',
-      categoryId: categories[0]?.id || 'uncategorized',
-      price: '',
-      description: '',
-      inStock: true,
-    });
-    toast.success(`Producto guardado localmente para ${brandLabel(brand)}.`);
+    setEditorOpen(true);
   };
 
-  const startEditing = (product: CatalogProduct) => {
-    setEditingId(product.id);
-    setEditedPrice(String(product.price));
-  };
+  const handleSaveProduct = () => {
+    const parsedPrice = Number(draft.price);
+    const deliveryMethods = normalizeListInput(draft.deliveryMethodsText);
+    const benefits = normalizeListInput(draft.benefitsText);
 
-  const savePrice = (productId: string) => {
-    const parsedPrice = Number(editedPrice);
+    if (!draft.name.trim()) {
+      toast.error('Agrega un nombre para el producto.');
+      return;
+    }
+
     if (Number.isNaN(parsedPrice) || parsedPrice <= 0) {
       toast.error('Ingresa un precio valido.');
       return;
     }
 
-    setProducts(prev =>
-      prev.map(product =>
-        product.id === productId ? { ...product, price: parsedPrice } : product
-      )
-    );
-    const updatedProduct = products.find(product => product.id === productId);
-    if (updatedProduct) {
-      upsertLocalCatalogProduct(brand, { ...updatedProduct, price: parsedPrice });
-      setHasLocalChanges(true);
+    if (!draft.description.trim()) {
+      toast.error('Agrega una descripcion util para el producto.');
+      return;
     }
-    setEditingId(null);
-    setEditedPrice('');
-    toast.success(`Precio actualizado y persistido para ${brandLabel(brand)}.`);
-  };
 
-  const duplicateProduct = (product: CatalogProduct) => {
-    const copy: CatalogProduct = {
-      ...product,
-      id: `copy-${Date.now()}`,
-      name: `${product.name} Copia`,
+    if (deliveryMethods.length === 0) {
+      toast.error('Define al menos un metodo de entrega.');
+      return;
+    }
+
+    const existingProduct =
+      editorMode === 'edit'
+        ? products.find(product => product.id === editingTargetId) ?? null
+        : null;
+
+    if (editorMode === 'edit' && !existingProduct) {
+      toast.error('El producto ya no esta disponible para edicion.');
+      closeEditor();
+      return;
+    }
+
+    const nextProduct: CatalogProduct = {
+      id: existingProduct?.id ?? `draft-${Date.now()}`,
+      name: draft.name.trim(),
+      brand: existingProduct?.brand ?? brandLabel(brand),
+      subBrand: draft.subBrand.trim(),
+      categoryId: draft.categoryId || getDefaultCategoryId(categories),
+      gender: existingProduct?.gender ?? 'unisex',
+      description: draft.description.trim(),
+      benefits,
+      price: parsedPrice,
+      imageUrl: draft.imageUrl.trim() || getProductFallbackImage(brand),
+      inStock: draft.inStock,
+      paymentLink: existingProduct?.paymentLink,
+      deliveryTime: draft.deliveryTime.trim() || getDefaultDeliveryTime(brand),
+      deliveryMethods,
     };
-    setProducts(prev => [copy, ...prev]);
-    upsertLocalCatalogProduct(brand, copy);
+
+    setProducts(prev =>
+      editorMode === 'edit'
+        ? prev.map(product => (product.id === nextProduct.id ? nextProduct : product))
+        : [nextProduct, ...prev],
+    );
+    upsertLocalCatalogProduct(brand, nextProduct);
     setHasLocalChanges(true);
-    toast.success(`Producto duplicado y guardado localmente para ${brandLabel(brand)}.`);
+    closeEditor();
+    toast.success(
+      editorMode === 'edit'
+        ? `Producto actualizado localmente para ${brandLabel(brand)}.`
+        : `Producto guardado localmente para ${brandLabel(brand)}.`,
+    );
   };
 
   const toggleStock = (productId: string) => {
-    const target = products.find(product => product.id === productId);
-    if (!target) return;
+    const targetProduct = products.find(product => product.id === productId);
+    if (!targetProduct) return;
 
-    const nextProduct = { ...target, inStock: !target.inStock };
+    const nextProduct = { ...targetProduct, inStock: !targetProduct.inStock };
     setProducts(prev =>
-      prev.map(product => (product.id === productId ? nextProduct : product))
+      prev.map(product => (product.id === productId ? nextProduct : product)),
     );
     upsertLocalCatalogProduct(brand, nextProduct);
     setHasLocalChanges(true);
     toast.success(
-      target.inStock ? 'Producto marcado como agotado.' : 'Producto marcado como disponible.'
+      targetProduct.inStock
+        ? 'Producto marcado como agotado.'
+        : 'Producto marcado como disponible.',
     );
   };
 
   const deleteProduct = () => {
     if (!deleteTarget) return;
+
     setProducts(prev => prev.filter(product => product.id !== deleteTarget.id));
     deleteLocalCatalogProduct(brand, deleteTarget.id);
     setHasLocalChanges(true);
@@ -312,20 +402,10 @@ export default function ProductManager() {
     setLoading(true);
     try {
       clearLocalCatalogOverrides(brand);
-      const data = await fetchCatalogData(brand);
-      if (data) {
-        setBaseProducts(data.products);
-        setProducts(data.products);
-        setCategories(data.categories);
-        setDraft(prev => ({
-          ...prev,
-          categoryId: data.categories[0]?.id || prev.categoryId || 'uncategorized',
-        }));
-      }
-      setHasLocalChanges(false);
-      setEditingId(null);
-      setEditedPrice('');
+      closeEditor();
+      setDeleteTarget(null);
       setClearLocalChangesOpen(false);
+      await loadCatalog(brand);
       toast.success(`Cambios locales de ${brandLabel(brand)} limpiados.`);
     } finally {
       setLoading(false);
@@ -338,6 +418,13 @@ export default function ProductManager() {
     setSearchTerm('');
   };
 
+  const editorTitle =
+    editorMode === 'edit' ? 'Editar producto local' : 'Nuevo producto local';
+  const editorDescription =
+    editorMode === 'edit'
+      ? `Actualiza nombre, descripcion, imagen, entrega y precio. El cambio queda guardado en este navegador para ${brandLabel(brand)}.`
+      : `Crea un producto local completo para ${brandLabel(brand)}. Esta alta no modifica Odoo ni el catalogo remoto.`;
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -345,7 +432,8 @@ export default function ProductManager() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Gestion de Productos</h1>
             <p className="text-slate-500">
-              Administra el catalogo de {brand} con cambios persistentes en este navegador para cada marca.
+              Administra el catalogo de {brandLabel(brand)} con altas y ediciones
+              persistentes en este navegador para cada marca.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
@@ -370,9 +458,12 @@ export default function ProductManager() {
             <div className="p-4 border-b border-slate-100 flex flex-col gap-4 bg-white">
               <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
                 <div className="relative w-full lg:w-96">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <Search
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    size={18}
+                  />
                   <Input
-                    placeholder="Buscar por nombre o marca..."
+                    placeholder="Buscar por nombre, submarca o descripcion..."
                     className="pl-10 rounded-xl border-slate-200 focus:ring-primary/20"
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
@@ -385,7 +476,10 @@ export default function ProductManager() {
                     <span>Filtros</span>
                   </div>
 
-                  <Select value={stockFilter} onValueChange={value => setStockFilter(value as StockFilter)}>
+                  <Select
+                    value={stockFilter}
+                    onValueChange={value => setStockFilter(value as StockFilter)}
+                  >
                     <SelectTrigger className="rounded-xl border-slate-200 w-full sm:w-[180px]">
                       <SelectValue placeholder="Stock" />
                     </SelectTrigger>
@@ -410,13 +504,21 @@ export default function ProductManager() {
                     </SelectContent>
                   </Select>
 
-                  <Button variant="outline" className="rounded-xl border-slate-200" onClick={clearFilters}>
+                  <Button
+                    variant="outline"
+                    className="rounded-xl border-slate-200"
+                    onClick={clearFilters}
+                  >
                     Limpiar
                   </Button>
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="rounded-xl flex items-center gap-2 border-slate-200" disabled={exportProducts.length === 0}>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl flex items-center gap-2 border-slate-200"
+                        disabled={exportProducts.length === 0}
+                      >
                         <Download size={18} />
                         Exportar
                         <ChevronDown size={16} />
@@ -424,19 +526,32 @@ export default function ProductManager() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-64 rounded-xl p-2">
                       <DropdownMenuLabel className="px-3 py-2">
-                        Exportar {exportProducts.length} producto{exportProducts.length === 1 ? '' : 's'}
+                        Exportar {exportProducts.length} producto
+                        {exportProducts.length === 1 ? '' : 's'}
                       </DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => generateWhatsAppCsv(exportProducts)} className="rounded-lg cursor-pointer">
+                      <DropdownMenuItem
+                        onClick={() => generateWhatsAppCsv(exportProducts)}
+                        className="rounded-lg cursor-pointer"
+                      >
                         Catalogo WhatsApp
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => generateMercadoLibreCsv(exportProducts)} className="rounded-lg cursor-pointer">
+                      <DropdownMenuItem
+                        onClick={() => generateMercadoLibreCsv(exportProducts)}
+                        className="rounded-lg cursor-pointer"
+                      >
                         CSV Mercado Libre
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => generateEbayCsv(exportProducts)} className="rounded-lg cursor-pointer">
+                      <DropdownMenuItem
+                        onClick={() => generateEbayCsv(exportProducts)}
+                        className="rounded-lg cursor-pointer"
+                      >
                         CSV eBay
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => generateAmazonCsv(exportProducts)} className="rounded-lg cursor-pointer">
+                      <DropdownMenuItem
+                        onClick={() => generateAmazonCsv(exportProducts)}
+                        className="rounded-lg cursor-pointer"
+                      >
                         TXT Amazon
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -445,11 +560,17 @@ export default function ProductManager() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="rounded-full border-slate-200 px-3 py-1 text-slate-500">
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-slate-200 px-3 py-1 text-slate-500"
+                >
                   {exportProducts.length} de {products.length} productos visibles
                 </Badge>
                 {hasLocalChanges && (
-                  <Badge variant="outline" className="rounded-full border-amber-200 px-3 py-1 text-amber-700">
+                  <Badge
+                    variant="outline"
+                    className="rounded-full border-amber-200 px-3 py-1 text-amber-700"
+                  >
                     Cambios locales persistentes para {brandLabel(brand)}
                   </Badge>
                 )}
@@ -480,105 +601,145 @@ export default function ProductManager() {
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">Cargando productos...</td>
+                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                        Cargando productos...
+                      </td>
                     </tr>
                   ) : filteredProducts.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">No se encontraron productos.</td>
-                    </tr>
-                  ) : filteredProducts.map(product => (
-                    <tr key={product.id} className="hover:bg-slate-50/30 transition-colors group">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-lg bg-slate-100 overflow-hidden shrink-0 border border-slate-100">
-                            <img
-                              src={product.imageUrl}
-                              alt={product.name}
-                              className="w-full h-full object-cover"
-                              onError={e => {
-                                (e.target as HTMLImageElement).src = getProductFallbackImage(product.brand);
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-800 leading-tight">{product.name}</p>
-                            <p className="text-xs text-slate-400 mt-0.5">{product.subBrand || product.brand}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-500">{categoryMap.get(product.categoryId) ?? product.categoryId}</td>
-                      <td className="px-6 py-4">
-                        {editingId === product.id ? (
-                          <div className="flex items-center gap-2">
-                            <Input
-                              value={editedPrice}
-                              onChange={e => setEditedPrice(e.target.value)}
-                              className="w-28 h-8 text-sm"
-                              type="number"
-                              min="0"
-                              step="0.01"
-                            />
-                            <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-500" onClick={() => savePrice(product.id)}>
-                              <Check size={16} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500" onClick={() => { setEditingId(null); setEditedPrice(''); }}>
-                              <X size={16} />
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="font-bold text-slate-900">${product.price.toLocaleString()}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${
-                          product.inStock
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-rose-100 text-rose-700'
-                        }`}>
-                          {product.inStock ? 'En Stock' : 'Agotado'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-slate-400 hover:text-primary hover:bg-primary/5"
-                            onClick={() => startEditing(product)}
-                            title="Editar precio"
-                          >
-                            <Edit3 size={16} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-slate-400 hover:text-rose-500 hover:bg-rose-50"
-                            onClick={() => setDeleteTarget(product)}
-                            title="Eliminar"
-                          >
-                            <Trash2 size={16} />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400">
-                                <MoreVertical size={16} />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-52 rounded-xl p-2">
-                              <DropdownMenuItem onClick={() => duplicateProduct(product)} className="rounded-lg cursor-pointer gap-2">
-                                <Copy size={14} />
-                                Duplicar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toggleStock(product.id)} className="rounded-lg cursor-pointer gap-2">
-                                {product.inStock ? <PackageX size={14} /> : <PackageCheck size={14} />}
-                                {product.inStock ? 'Marcar agotado' : 'Marcar disponible'}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
+                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                        No se encontraron productos.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredProducts.map(product => (
+                      <tr key={product.id} className="hover:bg-slate-50/30 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-start gap-4">
+                            <div className="w-14 h-14 rounded-xl bg-slate-100 overflow-hidden shrink-0 border border-slate-100">
+                              <img
+                                src={product.imageUrl}
+                                alt={product.name}
+                                className="w-full h-full object-cover"
+                                onError={e => {
+                                  (e.target as HTMLImageElement).src = getProductFallbackImage(brand);
+                                }}
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-800 leading-tight">
+                                {product.name}
+                              </p>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                {product.subBrand || product.brand}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-2 line-clamp-2">
+                                {product.description}
+                              </p>
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                <Badge
+                                  variant="outline"
+                                  className="rounded-full border-slate-200 px-2.5 py-0.5 text-[11px] text-slate-500"
+                                >
+                                  {product.deliveryTime}
+                                </Badge>
+                                {product.benefits.length > 0 && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="rounded-full px-2.5 py-0.5 text-[11px]"
+                                  >
+                                    {product.benefits.length} beneficio
+                                    {product.benefits.length === 1 ? '' : 's'}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500">
+                          <p className="font-medium text-slate-700">
+                            {categoryMap.get(product.categoryId) ?? product.categoryId}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {product.deliveryMethods.join(' · ')}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="font-bold text-slate-900">
+                            ${product.price.toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${
+                              product.inStock
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-rose-100 text-rose-700'
+                            }`}
+                          >
+                            {product.inStock ? 'En Stock' : 'Agotado'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-lg"
+                              onClick={() => openEditDialog(product)}
+                            >
+                              <Edit3 size={14} />
+                              Editar producto
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 text-slate-400 hover:text-primary hover:bg-primary/5"
+                              onClick={() => toggleStock(product.id)}
+                              title={
+                                product.inStock
+                                  ? 'Marcar como agotado'
+                                  : 'Marcar como disponible'
+                              }
+                            >
+                              {product.inStock ? (
+                                <PackageX size={16} />
+                              ) : (
+                                <PackageCheck size={16} />
+                              )}
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 text-slate-400"
+                                >
+                                  <MoreVertical size={16} />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56 rounded-xl p-2">
+                                <DropdownMenuItem
+                                  onClick={() => openDuplicateDialog(product)}
+                                  className="rounded-lg cursor-pointer gap-2"
+                                >
+                                  <Copy size={14} />
+                                  Duplicar y editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setDeleteTarget(product)}
+                                  className="rounded-lg cursor-pointer gap-2 text-rose-600 focus:text-rose-600"
+                                >
+                                  <Trash2 size={14} />
+                                  Eliminar producto
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -586,64 +747,283 @@ export default function ProductManager() {
         </Card>
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-xl rounded-3xl p-0 overflow-hidden">
+      <Dialog open={editorOpen} onOpenChange={handleEditorOpenChange}>
+        <DialogContent className="sm:max-w-5xl rounded-3xl p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6">
-            <DialogTitle>Nuevo producto local</DialogTitle>
-            <DialogDescription>
-              Este alta queda guardada localmente en este navegador para {brandLabel(brand)} y no toca Odoo.
-            </DialogDescription>
+            <DialogTitle>{editorTitle}</DialogTitle>
+            <DialogDescription>{editorDescription}</DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 pb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nombre</label>
-              <Input value={draft.name} onChange={e => setDraft(prev => ({ ...prev, name: e.target.value }))} className="mt-2 rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Submarca</label>
-              <Input value={draft.subBrand} onChange={e => setDraft(prev => ({ ...prev, subBrand: e.target.value }))} className="mt-2 rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Precio</label>
-              <Input value={draft.price} onChange={e => setDraft(prev => ({ ...prev, price: e.target.value }))} className="mt-2 rounded-xl" type="number" min="0" step="0.01" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Categoria</label>
-              <Select value={draft.categoryId} onValueChange={value => setDraft(prev => ({ ...prev, categoryId: value }))}>
-                <SelectTrigger className="mt-2 rounded-xl w-full">
-                  <SelectValue placeholder="Selecciona una categoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map(category => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Disponibilidad</label>
-              <Select value={draft.inStock ? 'in-stock' : 'out-of-stock'} onValueChange={value => setDraft(prev => ({ ...prev, inStock: value === 'in-stock' }))}>
-                <SelectTrigger className="mt-2 rounded-xl w-full">
-                  <SelectValue placeholder="Selecciona estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="in-stock">Disponible</SelectItem>
-                  <SelectItem value="out-of-stock">Agotado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Descripcion</label>
-              <Input value={draft.description} onChange={e => setDraft(prev => ({ ...prev, description: e.target.value }))} className="mt-2 rounded-xl" />
+          <div className="grid gap-0 lg:grid-cols-[minmax(0,1.45fr)_360px]">
+            <ScrollArea className="max-h-[72vh] border-t border-slate-100">
+              <div className="px-6 py-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Nombre
+                  </label>
+                  <Input
+                    value={draft.name}
+                    onChange={e => setDraft(prev => ({ ...prev, name: e.target.value }))}
+                    className="mt-2 rounded-xl"
+                    placeholder="Ej. Serum corporal renovador"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Submarca
+                  </label>
+                  <Input
+                    value={draft.subBrand}
+                    onChange={e => setDraft(prev => ({ ...prev, subBrand: e.target.value }))}
+                    className="mt-2 rounded-xl"
+                    placeholder="Ej. Ekos, PiMag, Chronos"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Categoria
+                  </label>
+                  <Select
+                    value={draft.categoryId || getDefaultCategoryId(categories)}
+                    onValueChange={value => setDraft(prev => ({ ...prev, categoryId: value }))}
+                  >
+                    <SelectTrigger className="mt-2 rounded-xl w-full">
+                      <SelectValue placeholder="Selecciona una categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.length === 0 ? (
+                        <SelectItem value="uncategorized">Sin categoria</SelectItem>
+                      ) : (
+                        categories.map(category => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Precio
+                  </label>
+                  <Input
+                    value={draft.price}
+                    onChange={e => setDraft(prev => ({ ...prev, price: e.target.value }))}
+                    className="mt-2 rounded-xl"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Tiempo de entrega
+                  </label>
+                  <Input
+                    value={draft.deliveryTime}
+                    onChange={e => setDraft(prev => ({ ...prev, deliveryTime: e.target.value }))}
+                    className="mt-2 rounded-xl"
+                    placeholder="Ej. Entrega Inmediata o 3-5 dias habiles"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    URL de imagen
+                  </label>
+                  <Input
+                    value={draft.imageUrl}
+                    onChange={e => setDraft(prev => ({ ...prev, imageUrl: e.target.value }))}
+                    className="mt-2 rounded-xl"
+                    placeholder="https://... o /assets/..."
+                  />
+                  <p className="mt-2 text-xs text-slate-400">
+                    Si lo dejas vacio, usaremos la imagen fallback configurada para la marca.
+                  </p>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Descripcion
+                  </label>
+                  <Textarea
+                    value={draft.description}
+                    onChange={e => setDraft(prev => ({ ...prev, description: e.target.value }))}
+                    className="mt-2 min-h-28 rounded-xl"
+                    placeholder="Describe el producto, su propuesta y el uso recomendado."
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-slate-800">Disponibilidad</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Define si el producto aparece como disponible o agotado.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-slate-500">
+                        {draft.inStock ? 'Disponible' : 'Agotado'}
+                      </span>
+                      <Switch
+                        checked={draft.inStock}
+                        onCheckedChange={checked =>
+                          setDraft(prev => ({ ...prev, inStock: checked }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Metodos de entrega
+                  </label>
+                  <Textarea
+                    value={draft.deliveryMethodsText}
+                    onChange={e =>
+                      setDraft(prev => ({ ...prev, deliveryMethodsText: e.target.value }))
+                    }
+                    className="mt-2 min-h-24 rounded-xl"
+                    placeholder={'Envio nacional\nEntrega local\nRetiro con cita'}
+                  />
+                  <p className="mt-2 text-xs text-slate-400">
+                    Puedes separar por linea o por comas.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Beneficios
+                  </label>
+                  <Textarea
+                    value={draft.benefitsText}
+                    onChange={e => setDraft(prev => ({ ...prev, benefitsText: e.target.value }))}
+                    className="mt-2 min-h-24 rounded-xl"
+                    placeholder={'Hidratacion profunda\nAroma duradero\nIngredientes naturales'}
+                  />
+                  <p className="mt-2 text-xs text-slate-400">
+                    Puedes separar por linea o por comas.
+                  </p>
+                </div>
+              </div>
+            </ScrollArea>
+
+            <div className="border-t lg:border-t-0 lg:border-l border-slate-100 bg-slate-50/80 px-6 py-6 space-y-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Preview
+                </p>
+                <h3 className="text-lg font-bold text-slate-900 mt-2">
+                  {draft.name.trim() || 'Producto sin nombre'}
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  {draft.subBrand.trim() || brandLabel(brand)}
+                </p>
+              </div>
+
+              <div className="rounded-3xl overflow-hidden border border-slate-200 bg-white shadow-sm">
+                <div className="aspect-[4/3] bg-slate-100">
+                  <img
+                    src={previewImageUrl}
+                    alt={draft.name || 'Preview del producto'}
+                    className="w-full h-full object-cover"
+                    onError={e => {
+                      (e.target as HTMLImageElement).src = getProductFallbackImage(brand);
+                    }}
+                  />
+                </div>
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-lg font-bold text-slate-900">
+                      {draft.price ? `$${Number(draft.price || 0).toLocaleString()}` : '$0'}
+                    </span>
+                    <Badge
+                      variant={draft.inStock ? 'secondary' : 'outline'}
+                      className={
+                        draft.inStock
+                          ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100'
+                          : 'border-rose-200 text-rose-700'
+                      }
+                    >
+                      {draft.inStock ? 'Disponible' : 'Agotado'}
+                    </Badge>
+                  </div>
+
+                  <p className="text-sm text-slate-600">
+                    {draft.description.trim() || 'Agrega una descripcion para ver el resumen del producto.'}
+                  </p>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Entrega
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline" className="rounded-full border-slate-200">
+                        {draft.deliveryTime.trim() || getDefaultDeliveryTime(brand)}
+                      </Badge>
+                      {previewDeliveryMethods.length > 0 ? (
+                        previewDeliveryMethods.map(method => (
+                          <Badge key={method} variant="secondary" className="rounded-full">
+                            {method}
+                          </Badge>
+                        ))
+                      ) : (
+                        <Badge variant="outline" className="rounded-full border-dashed">
+                          Sin metodos definidos
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Beneficios
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {previewBenefits.length > 0 ? (
+                        previewBenefits.map(benefit => (
+                          <Badge key={benefit} variant="outline" className="rounded-full border-slate-200">
+                            {benefit}
+                          </Badge>
+                        ))
+                      ) : (
+                        <Badge variant="outline" className="rounded-full border-dashed">
+                          Sin beneficios capturados
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 border border-slate-100 px-3 py-3">
+                    <p className="text-xs text-slate-500">
+                      Categoria: {(categoryMap.get(draft.categoryId) ?? draft.categoryId) || 'Sin categoria'}
+                    </p>
+                    {editorMode === 'edit' && editingTarget && (
+                      <p className="text-xs text-slate-400 mt-1">
+                        Editando ID local: {editingTarget.id}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <DialogFooter className="px-6 pb-6">
-            <Button variant="outline" className="rounded-xl" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-            <Button className="rounded-xl" onClick={handleCreateProduct}>Guardar producto</Button>
+          <DialogFooter className="border-t border-slate-100 px-6 py-4">
+            <Button variant="outline" className="rounded-xl" onClick={closeEditor}>
+              Cancelar
+            </Button>
+            <Button className="rounded-xl" onClick={handleSaveProduct}>
+              {editorMode === 'edit' ? 'Guardar cambios' : 'Guardar producto'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -660,7 +1040,10 @@ export default function ProductManager() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
-            <AlertDialogAction className="rounded-xl bg-rose-600 hover:bg-rose-700" onClick={deleteProduct}>
+            <AlertDialogAction
+              className="rounded-xl bg-rose-600 hover:bg-rose-700"
+              onClick={deleteProduct}
+            >
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -672,15 +1055,13 @@ export default function ProductManager() {
           <AlertDialogHeader>
             <AlertDialogTitle>Limpiar cambios locales</AlertDialogTitle>
             <AlertDialogDescription>
-              Restableceremos el catalogo visible de {brandLabel(brand)} al estado base y borraremos las ediciones locales guardadas en este navegador.
+              Restableceremos el catalogo visible de {brandLabel(brand)} al estado base y
+              borraremos las ediciones locales guardadas en este navegador.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="rounded-xl"
-              onClick={resetLocalChanges}
-            >
+            <AlertDialogAction className="rounded-xl" onClick={resetLocalChanges}>
               Limpiar cambios
             </AlertDialogAction>
           </AlertDialogFooter>
