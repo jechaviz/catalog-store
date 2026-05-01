@@ -17,6 +17,46 @@ export interface LocalCatalogOverrides {
   deletedProductIds: string[];
 }
 
+export type LocalCatalogOverridesSnapshot =
+  | LocalCatalogOverrides
+  | Partial<LocalCatalogOverrides>
+  | CatalogProduct[]
+  | Record<string, unknown>
+  | null
+  | undefined;
+
+export interface LocalCatalogRemoteSyncPayload {
+  brand: Brand;
+  overrides: LocalCatalogOverrides;
+}
+
+export interface LocalCatalogProductRemoteSyncPayload extends LocalCatalogRemoteSyncPayload {
+  action: 'upsert' | 'delete';
+  product?: CatalogProduct;
+  productId?: string;
+}
+
+export interface LocalCatalogRemoteSyncOptions<TResult = void> {
+  persist: (payload: LocalCatalogRemoteSyncPayload) => Promise<TResult>;
+  getSnapshot?: (
+    result: TResult,
+    payload: LocalCatalogRemoteSyncPayload,
+  ) => LocalCatalogOverridesSnapshot;
+}
+
+export interface LocalCatalogProductRemoteSyncOptions<TResult = void> {
+  persist: (payload: LocalCatalogProductRemoteSyncPayload) => Promise<TResult>;
+  getSnapshot?: (
+    result: TResult,
+    payload: LocalCatalogProductRemoteSyncPayload,
+  ) => LocalCatalogOverridesSnapshot;
+}
+
+export interface LocalCatalogRemoteSyncResult<TResult = void> {
+  overrides: LocalCatalogOverrides;
+  remoteResult: TResult;
+}
+
 function safeParseJson<T>(rawValue: string | null, fallbackValue: T): T {
   if (!rawValue) {
     return fallbackValue;
@@ -53,6 +93,26 @@ function normalizeCatalogGender(
 
 function dedupeCatalogStrings(values: string[]) {
   return Array.from(new Set(values));
+}
+
+function dedupeCatalogProducts(products: CatalogProduct[]) {
+  const productMap = new Map<string, CatalogProduct>();
+
+  products.forEach((product) => {
+    productMap.set(product.id, product);
+  });
+
+  return Array.from(productMap.values());
+}
+
+function normalizeCatalogProductCollection(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .map((product) => normalizeCatalogProductRecord(product))
+      .filter((product): product is CatalogProduct => product !== null);
+  }
+
+  return [];
 }
 
 function normalizeCatalogProductRecord(value: unknown): CatalogProduct | null {
@@ -165,15 +225,58 @@ export function createLocalCatalogProductId(kind: LocalCatalogProductIdKind = 'd
   );
 }
 
-function normalizeLocalCatalogOverrides(value: Partial<LocalCatalogOverrides> | null | undefined) {
+function normalizeLocalCatalogOverrides(value: unknown) {
+  const candidate =
+    Array.isArray(value) || (value && typeof value === 'object')
+      ? (value as Record<string, unknown>)
+      : undefined;
+
+  if (!candidate) {
+    return {
+      products: [],
+      deletedProductIds: [],
+    } satisfies LocalCatalogOverrides;
+  }
+
+  const products = [
+    candidate.products,
+    candidate.localProducts,
+    candidate.customProducts,
+    candidate.items,
+    candidate.overrides,
+  ].flatMap((rawCollection) => normalizeCatalogProductCollection(rawCollection));
+
+  const deletedProductIds = [
+    candidate.deletedProductIds,
+    candidate.deletedIds,
+    candidate.removedProductIds,
+    candidate.hiddenProductIds,
+  ].flatMap((rawIds) => normalizeCatalogStringList(rawIds));
+
   return {
-    products: Array.isArray(value?.products)
-      ? value.products
-          .map((product) => normalizeCatalogProductRecord(product))
-          .filter((product): product is CatalogProduct => product !== null)
-      : [],
-    deletedProductIds: normalizeCatalogStringList(value?.deletedProductIds),
+    products: dedupeCatalogProducts(products),
+    deletedProductIds: dedupeCatalogStrings(deletedProductIds),
   } satisfies LocalCatalogOverrides;
+}
+
+function dispatchLocalCatalogChangeEvent(brand: Brand, storageKey: string) {
+  window.dispatchEvent(
+    new CustomEvent(LOCAL_CATALOG_EVENT_NAME, {
+      detail: { brand, storageKey },
+    }),
+  );
+}
+
+function applyLocalCatalogRemoteSnapshot(
+  brand: Brand,
+  snapshot: LocalCatalogOverridesSnapshot,
+  fallbackOverrides: LocalCatalogOverrides,
+) {
+  if (snapshot === undefined) {
+    return fallbackOverrides;
+  }
+
+  return hydrateLocalCatalogOverridesFromSnapshot(brand, snapshot);
 }
 
 export function getLocalCatalogStorageKey(brand: Brand) {
@@ -269,13 +372,50 @@ export function saveLocalCatalogOverrides(brand: Brand, overrides: LocalCatalogO
   }
 
   localStorage.setItem(storageKey, JSON.stringify(normalizedOverrides));
-  window.dispatchEvent(
-    new CustomEvent(LOCAL_CATALOG_EVENT_NAME, {
-      detail: { brand, storageKey },
-    }),
-  );
+  dispatchLocalCatalogChangeEvent(brand, storageKey);
 
   return normalizedOverrides;
+}
+
+export function hydrateLocalCatalogOverridesFromSnapshot(
+  brand: Brand,
+  snapshot: LocalCatalogOverridesSnapshot,
+) {
+  if (snapshot === null) {
+    clearLocalCatalogOverrides(brand);
+    return normalizeLocalCatalogOverrides({});
+  }
+
+  if (Array.isArray(snapshot)) {
+    return saveLocalCatalogOverrides(brand, {
+      products: normalizeCatalogProductCollection(snapshot),
+      deletedProductIds: [],
+    });
+  }
+
+  return saveLocalCatalogOverrides(brand, normalizeLocalCatalogOverrides(snapshot));
+}
+
+export async function syncLocalCatalogOverrides<TResult = void>(
+  brand: Brand,
+  overrides: LocalCatalogOverrides,
+  options: LocalCatalogRemoteSyncOptions<TResult>,
+): Promise<LocalCatalogRemoteSyncResult<TResult>> {
+  const nextOverrides = saveLocalCatalogOverrides(brand, overrides);
+  const payload: LocalCatalogRemoteSyncPayload = {
+    brand,
+    overrides: nextOverrides,
+  };
+  const remoteResult = await options.persist(payload);
+
+  return {
+    overrides: applyLocalCatalogRemoteSnapshot(
+      brand,
+      options.getSnapshot?.(remoteResult, payload),
+      nextOverrides,
+    ),
+    remoteResult,
+  };
 }
 
 export function upsertLocalCatalogProduct(brand: Brand, product: CatalogProduct) {
@@ -307,17 +447,65 @@ export function deleteLocalCatalogProduct(brand: Brand, productId: string) {
   });
 }
 
+export async function upsertLocalCatalogProductAndSync<TResult = void>(
+  brand: Brand,
+  product: CatalogProduct,
+  options: LocalCatalogProductRemoteSyncOptions<TResult>,
+): Promise<LocalCatalogRemoteSyncResult<TResult>> {
+  const nextProduct = sanitizeLocalCatalogProduct(product);
+  const nextOverrides = upsertLocalCatalogProduct(brand, nextProduct);
+  const payload: LocalCatalogProductRemoteSyncPayload = {
+    action: 'upsert',
+    brand,
+    overrides: nextOverrides,
+    product: nextProduct,
+  };
+  const remoteResult = await options.persist(payload);
+
+  return {
+    overrides: applyLocalCatalogRemoteSnapshot(
+      brand,
+      options.getSnapshot?.(remoteResult, payload),
+      nextOverrides,
+    ),
+    remoteResult,
+  };
+}
+
+export async function deleteLocalCatalogProductAndSync<TResult = void>(
+  brand: Brand,
+  productId: string,
+  options: LocalCatalogProductRemoteSyncOptions<TResult>,
+): Promise<LocalCatalogRemoteSyncResult<TResult>> {
+  const normalizedProductId = normalizeCatalogText(productId);
+  const nextOverrides = deleteLocalCatalogProduct(brand, normalizedProductId);
+  const payload: LocalCatalogProductRemoteSyncPayload = {
+    action: 'delete',
+    brand,
+    overrides: nextOverrides,
+    productId: normalizedProductId,
+  };
+  const remoteResult = await options.persist(payload);
+
+  return {
+    overrides: applyLocalCatalogRemoteSnapshot(
+      brand,
+      options.getSnapshot?.(remoteResult, payload),
+      nextOverrides,
+    ),
+    remoteResult,
+  };
+}
+
 export function clearLocalCatalogOverrides(brand: Brand) {
   if (!canUseCatalogStorage()) {
     return;
   }
 
-  localStorage.removeItem(getLocalCatalogStorageKey(brand));
-  window.dispatchEvent(
-    new CustomEvent(LOCAL_CATALOG_EVENT_NAME, {
-      detail: { brand, storageKey: getLocalCatalogStorageKey(brand) },
-    }),
-  );
+  const storageKey = getLocalCatalogStorageKey(brand);
+
+  localStorage.removeItem(storageKey);
+  dispatchLocalCatalogChangeEvent(brand, storageKey);
 }
 
 export function applyLocalCatalogOverrides(

@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { CartProvider } from "./hooks/useCart";
 import Home from "./pages/Home";
 import { BrandProvider } from "./contexts/BrandContext";
+import { StorefrontStateSync } from "./components/app/StorefrontStateSync";
 
 const Checkout = lazy(() => import("./pages/Checkout"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -123,6 +124,7 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <AuthProvider>
           <BrandProvider>
+            <StorefrontStateSync />
             <CartProvider>
               <TooltipProvider>
                 <Toaster />

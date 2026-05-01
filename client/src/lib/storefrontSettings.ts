@@ -17,12 +17,63 @@ export interface StorefrontSettings {
   transferInstructions: string;
 }
 
+export interface StorefrontSettingsRemoteSyncOptions {
+  endpoint?: string | null;
+  fetcher?: typeof fetch;
+  requestInit?: Omit<RequestInit, 'body' | 'headers' | 'method'>;
+  headers?: HeadersInit;
+  method?: 'POST' | 'PUT' | 'PATCH';
+}
+
+export interface StorefrontSettingsRemoteSyncResult {
+  settings: StorefrontSettings;
+  persistedRemotely: boolean;
+  usedLocalFallback: boolean;
+  response?: Response;
+  error?: unknown;
+}
+
+export type StorefrontSettingsRemoteSnapshot =
+  | Partial<StorefrontSettings>
+  | Partial<Record<Brand, Partial<StorefrontSettings> | null | undefined>>
+  | {
+      brand?: Brand;
+      settings?: Partial<StorefrontSettings> | null;
+      storefrontSettings?: Partial<StorefrontSettings> | null;
+      snapshot?: Partial<StorefrontSettings> | null;
+      data?: unknown;
+      brands?: Partial<Record<Brand, Partial<StorefrontSettings> | null | undefined>>;
+      byBrand?: Partial<Record<Brand, Partial<StorefrontSettings> | null | undefined>>;
+    }
+  | null
+  | undefined;
+
 const DEFAULT_MESSAGE_TEMPLATE = 'Hola, me interesa realizar el siguiente pedido:';
 const DEFAULT_CONNECTIA_LINK = 'https://connectia.mx/tu-tienda';
 const DEFAULT_PAYPAL_USERNAME = 'tuusuario';
 const DEFAULT_TRANSFER_INSTRUCTIONS =
   'Realiza tu transferencia y comparte tu comprobante por WhatsApp para confirmar el pedido.';
 const DEFAULT_LOGO_IMAGE_URL = '';
+export const STOREFRONT_SETTINGS_CHANGED_EVENT = 'catalog-storefront-settings-changed';
+
+const STOREFRONT_SETTINGS_REMOTE_SYNC_ENDPOINT = getTrimmedString(
+  import.meta.env.VITE_STOREFRONT_SETTINGS_SYNC_ENDPOINT
+);
+const STOREFRONT_SETTINGS_FIELD_KEYS = [
+  'siteName',
+  'slogan',
+  'logoImageUrl',
+  'heroImageUrl',
+  'heroEyebrow',
+  'heroDescription',
+  'sellerPhone',
+  'sellerMessageTemplate',
+  'connectiaPaymentLink',
+  'paypalPaymentLink',
+  'paypalUsername',
+  'transferClabe',
+  'transferInstructions',
+] as const;
 
 const DEFAULT_SETTINGS_BY_BRAND: Record<Brand, StorefrontSettings> = {
   natura: {
@@ -85,6 +136,27 @@ function getTrimmedString(value: unknown) {
 
 function canUseLocalStorage() {
   return typeof window !== 'undefined' && typeof localStorage !== 'undefined';
+}
+
+function isStorefrontSettingsRecord(value: unknown): value is Partial<StorefrontSettings> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  return STOREFRONT_SETTINGS_FIELD_KEYS.some((key) => key in value);
+}
+
+function getRecordValue(value: unknown, key: string) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  return (value as Record<string, unknown>)[key];
+}
+
+function getSnapshotFromBrandMap(brand: Brand, value: unknown) {
+  const candidate = getRecordValue(value, brand);
+  return isStorefrontSettingsRecord(candidate) ? candidate : null;
 }
 
 export function normalizeSellerPhone(value: unknown) {
@@ -180,6 +252,99 @@ function normalizeSettings(
   };
 }
 
+function dispatchStorefrontSettingsChanged(brand: Brand) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(STOREFRONT_SETTINGS_CHANGED_EVENT, {
+      detail: { brand },
+    })
+  );
+}
+
+function resolveStorefrontSettingsSnapshot(
+  brand: Brand,
+  snapshot: StorefrontSettingsRemoteSnapshot
+): Partial<StorefrontSettings> | null {
+  if (isStorefrontSettingsRecord(snapshot)) {
+    return snapshot;
+  }
+
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    return null;
+  }
+
+  const topLevelBrandSnapshot = getSnapshotFromBrandMap(brand, snapshot);
+  if (topLevelBrandSnapshot) {
+    return topLevelBrandSnapshot;
+  }
+
+  const nestedCandidates = [
+    getRecordValue(snapshot, 'brands'),
+    getRecordValue(snapshot, 'byBrand'),
+    getRecordValue(snapshot, 'data'),
+    getRecordValue(snapshot, 'settings'),
+    getRecordValue(snapshot, 'storefrontSettings'),
+    getRecordValue(snapshot, 'snapshot'),
+  ];
+
+  for (const candidate of nestedCandidates) {
+    if (isStorefrontSettingsRecord(candidate)) {
+      const snapshotBrand = getRecordValue(snapshot, 'brand');
+      if (!snapshotBrand || snapshotBrand === brand) {
+        return candidate;
+      }
+    }
+
+    const nestedBrandSnapshot = getSnapshotFromBrandMap(brand, candidate);
+    if (nestedBrandSnapshot) {
+      return nestedBrandSnapshot;
+    }
+  }
+
+  return null;
+}
+
+function writeStorefrontSettingsCache(
+  brand: Brand,
+  settings: StorefrontSettings,
+  shouldPersist = true
+) {
+  if (canUseLocalStorage() && shouldPersist) {
+    localStorage.setItem(getStorefrontSettingsStorageKey(brand), JSON.stringify(settings));
+  }
+
+  dispatchStorefrontSettingsChanged(brand);
+  return settings;
+}
+
+function clearStorefrontSettingsCache(brand: Brand) {
+  const defaultSettings = getDefaultStorefrontSettings(brand);
+
+  if (canUseLocalStorage()) {
+    localStorage.removeItem(getStorefrontSettingsStorageKey(brand));
+  }
+
+  dispatchStorefrontSettingsChanged(brand);
+  return defaultSettings;
+}
+
+async function readRemoteSyncResponse(response: Response) {
+  const rawText = await response.text();
+
+  if (!rawText.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawText) as StorefrontSettingsRemoteSnapshot;
+  } catch {
+    return null;
+  }
+}
+
 export function readStorefrontSettings(brand: Brand): StorefrontSettings {
   const defaults = getDefaultStorefrontSettings(brand);
 
@@ -195,18 +360,103 @@ export function readStorefrontSettings(brand: Brand): StorefrontSettings {
   return normalizeSettings(brand, parsed);
 }
 
+export function hydrateStorefrontSettingsCache(
+  brand: Brand,
+  snapshot: StorefrontSettingsRemoteSnapshot
+) {
+  const parsedSnapshot = resolveStorefrontSettingsSnapshot(brand, snapshot);
+
+  if (!parsedSnapshot) {
+    return readStorefrontSettings(brand);
+  }
+
+  const nextSettings = normalizeSettings(brand, {
+    ...readStorefrontSettings(brand),
+    ...parsedSnapshot,
+  });
+
+  return writeStorefrontSettingsCache(brand, nextSettings);
+}
+
+export function replaceStorefrontSettingsCache(
+  brand: Brand,
+  snapshot: StorefrontSettingsRemoteSnapshot
+) {
+  const parsedSnapshot = resolveStorefrontSettingsSnapshot(brand, snapshot);
+
+  if (!parsedSnapshot) {
+    return clearStorefrontSettingsCache(brand);
+  }
+
+  return writeStorefrontSettingsCache(brand, normalizeSettings(brand, parsedSnapshot));
+}
+
 export function saveStorefrontSettings(brand: Brand, settings: Partial<StorefrontSettings>) {
   const nextSettings = normalizeSettings(brand, {
     ...readStorefrontSettings(brand),
     ...settings,
   });
 
-  if (!canUseLocalStorage()) {
-    return nextSettings;
+  return writeStorefrontSettingsCache(brand, nextSettings, canUseLocalStorage());
+}
+
+export async function saveStorefrontSettingsRemotely(
+  brand: Brand,
+  settings: Partial<StorefrontSettings>,
+  options: StorefrontSettingsRemoteSyncOptions = {}
+): Promise<StorefrontSettingsRemoteSyncResult> {
+  const nextSettings = normalizeSettings(brand, {
+    ...readStorefrontSettings(brand),
+    ...settings,
+  });
+  const endpoint = getTrimmedString(options.endpoint) || STOREFRONT_SETTINGS_REMOTE_SYNC_ENDPOINT;
+  const fetcher = options.fetcher ?? (typeof fetch === 'function' ? fetch : null);
+
+  if (!endpoint || !fetcher) {
+    return {
+      settings: saveStorefrontSettings(brand, nextSettings),
+      persistedRemotely: false,
+      usedLocalFallback: true,
+    };
   }
 
-  localStorage.setItem(getStorefrontSettingsStorageKey(brand), JSON.stringify(nextSettings));
-  window.dispatchEvent(new CustomEvent('catalog-storefront-settings-changed', { detail: { brand } }));
+  try {
+    const response = await fetcher(endpoint, {
+      ...options.requestInit,
+      method: options.method || 'PUT',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      body: JSON.stringify({
+        brand,
+        settings: nextSettings,
+      }),
+    });
 
-  return nextSettings;
+    if (!response.ok) {
+      throw new Error(`Remote storefront settings sync failed with status ${response.status}`);
+    }
+
+    const remoteSnapshot = await readRemoteSyncResponse(response);
+    const persistedSettings = replaceStorefrontSettingsCache(
+      brand,
+      remoteSnapshot ?? nextSettings
+    );
+
+    return {
+      settings: persistedSettings,
+      persistedRemotely: true,
+      usedLocalFallback: false,
+      response,
+    };
+  } catch (error) {
+    return {
+      settings: saveStorefrontSettings(brand, nextSettings),
+      persistedRemotely: false,
+      usedLocalFallback: true,
+      error,
+    };
+  }
 }

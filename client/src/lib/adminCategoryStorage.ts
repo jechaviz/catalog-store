@@ -41,6 +41,44 @@ export interface LocalCategoryOverrides {
   metadataById?: Record<string, LocalCategoryMetadata>;
 }
 
+export interface LocalCategoryRemoteSnapshot {
+  brand: Brand;
+  overrides: LocalCategoryOverrides;
+  categories?: Category[];
+}
+
+export interface PersistLocalCategoryOverridesPayload extends LocalCategoryRemoteSnapshot {}
+
+export interface PersistLocalCategoryOverridesRequestOptions {
+  url: string;
+  method?: 'POST' | 'PUT' | 'PATCH';
+  headers?: HeadersInit;
+  init?: Omit<RequestInit, 'body' | 'headers' | 'method'>;
+  mapBody?: (payload: PersistLocalCategoryOverridesPayload) => unknown;
+  mapResponseToSnapshot?: (response: unknown) => unknown;
+}
+
+export interface PersistLocalCategoryOverridesOptions {
+  categories?: Category[];
+  persist?: (payload: PersistLocalCategoryOverridesPayload) => Promise<unknown>;
+  request?: PersistLocalCategoryOverridesRequestOptions;
+  fetchImpl?: typeof fetch;
+  mapResponseToSnapshot?: (response: unknown) => unknown;
+}
+
+export interface PersistLocalCategoryOverridesResult {
+  overrides: LocalCategoryOverrides;
+  response?: unknown;
+}
+
+const localCategoryOverridesCache = new Map<Brand, LocalCategoryOverrides>();
+const REMOTE_LOCAL_CATEGORY_OVERRIDE_KEYS = [
+  'overrides',
+  'localCategoryOverrides',
+  'categoryOverrides',
+  'localCategorySnapshot',
+] as const;
+
 function safeParseJson<T>(rawValue: string | null, fallbackValue: T): T {
   if (!rawValue) {
     return fallbackValue;
@@ -55,6 +93,34 @@ function safeParseJson<T>(rawValue: string | null, fallbackValue: T): T {
 
 function canUseCategoryStorage() {
   return typeof window !== 'undefined' && typeof localStorage !== 'undefined';
+}
+
+function cloneLocalCategoryMetadata(metadata: LocalCategoryMetadata | undefined) {
+  if (!metadata) {
+    return undefined;
+  }
+
+  return finalizeCategoryMetadata(metadata);
+}
+
+function cloneLocalCategory(category: LocalCategory) {
+  return sanitizeLocalCategory({
+    ...category,
+    ...cloneLocalCategoryMetadata(category),
+  });
+}
+
+function cloneLocalCategoryOverrides(overrides: LocalCategoryOverrides): LocalCategoryOverrides {
+  return {
+    categories: overrides.categories.map((category) => cloneLocalCategory(category)),
+    deletedCategoryIds: [...overrides.deletedCategoryIds],
+    metadataById: Object.fromEntries(
+      Object.entries(overrides.metadataById ?? {}).map(([categoryId, metadata]) => [
+        categoryId,
+        finalizeCategoryMetadata(metadata),
+      ]),
+    ),
+  };
 }
 
 function normalizeCategoryText(value: unknown) {
@@ -423,6 +489,77 @@ function getLocalCategoryStorageKeys(brand: Brand) {
   ];
 }
 
+function getCachedLocalCategoryOverrides(brand: Brand) {
+  const cachedOverrides = localCategoryOverridesCache.get(brand);
+  return cachedOverrides ? cloneLocalCategoryOverrides(cachedOverrides) : null;
+}
+
+function setCachedLocalCategoryOverrides(brand: Brand, overrides: LocalCategoryOverrides) {
+  const normalizedOverrides = normalizeLocalCategoryOverrides(overrides);
+  const clonedOverrides = cloneLocalCategoryOverrides(normalizedOverrides);
+
+  localCategoryOverridesCache.set(brand, clonedOverrides);
+  return cloneLocalCategoryOverrides(clonedOverrides);
+}
+
+function buildLocalCategoryRemoteSnapshot(
+  brand: Brand,
+  overrides: LocalCategoryOverrides,
+  categories: Category[] = [],
+): LocalCategoryRemoteSnapshot {
+  return {
+    brand,
+    overrides: cloneLocalCategoryOverrides(normalizeLocalCategoryOverrides(overrides)),
+    ...(categories.length > 0
+      ? {
+          categories: categories.map((category) => ({
+            id: normalizeCategoryText(category.id),
+            name: normalizeCategoryText(category.name),
+          })),
+        }
+      : {}),
+  };
+}
+
+function extractRemoteLocalCategoryOverrides(snapshot: unknown) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    return snapshot;
+  }
+
+  const candidate = snapshot as Record<string, unknown>;
+
+  for (const key of REMOTE_LOCAL_CATEGORY_OVERRIDE_KEYS) {
+    if (candidate[key] !== undefined) {
+      return candidate[key];
+    }
+  }
+
+  return snapshot;
+}
+
+function shouldHydrateLocalCategoryOverridesFromSnapshot(snapshot: unknown) {
+  if (Array.isArray(snapshot)) {
+    return true;
+  }
+
+  if (!snapshot || typeof snapshot !== 'object') {
+    return false;
+  }
+
+  const candidate = snapshot as Record<string, unknown>;
+
+  return (
+    REMOTE_LOCAL_CATEGORY_OVERRIDE_KEYS.some((key) => candidate[key] !== undefined) ||
+    candidate.deletedCategoryIds !== undefined ||
+    candidate.metadataById !== undefined ||
+    candidate.localCategories !== undefined ||
+    candidate.customCategories !== undefined ||
+    candidate.items !== undefined ||
+    candidate.list !== undefined ||
+    candidate.categories !== undefined
+  );
+}
+
 function getPersistedLocalCategoryMetadataMap(overrides: LocalCategoryOverrides) {
   const metadataMap = new Map<string, { sortOrder?: number; isHidden?: boolean }>();
 
@@ -717,8 +854,14 @@ export function getLocalCategoryStorageKey(brand: Brand) {
 }
 
 export function readLocalCategoryOverrides(brand: Brand) {
+  const cachedOverrides = getCachedLocalCategoryOverrides(brand);
+
+  if (cachedOverrides) {
+    return cachedOverrides;
+  }
+
   if (!canUseCategoryStorage()) {
-    return createEmptyLocalCategoryOverrides();
+    return setCachedLocalCategoryOverrides(brand, createEmptyLocalCategoryOverrides());
   }
 
   for (const storageKey of getLocalCategoryStorageKeys(brand)) {
@@ -733,11 +876,11 @@ export function readLocalCategoryOverrides(brand: Brand) {
     );
 
     if (hasStoredLocalCategoryChanges(normalizedOverrides)) {
-      return normalizedOverrides;
+      return setCachedLocalCategoryOverrides(brand, normalizedOverrides);
     }
   }
 
-  return createEmptyLocalCategoryOverrides();
+  return setCachedLocalCategoryOverrides(brand, createEmptyLocalCategoryOverrides());
 }
 
 export function getLocalCategoryMetadata(
@@ -880,9 +1023,10 @@ export function getLocalCategoryChangesCount(brand: Brand, baseCategories: Categ
 export function saveLocalCategoryOverrides(brand: Brand, overrides: LocalCategoryOverrides) {
   const normalizedOverrides = normalizeLocalCategoryOverrides(overrides);
   const storageKey = getLocalCategoryStorageKey(brand);
+  const cachedOverrides = setCachedLocalCategoryOverrides(brand, normalizedOverrides);
 
   if (!canUseCategoryStorage()) {
-    return normalizedOverrides;
+    return cachedOverrides;
   }
 
   getLocalCategoryStorageKeys(brand).forEach((key) => {
@@ -898,7 +1042,90 @@ export function saveLocalCategoryOverrides(brand: Brand, overrides: LocalCategor
   }
 
   dispatchLocalCategoryChangeEvent(brand, storageKey);
-  return normalizedOverrides;
+  return cachedOverrides;
+}
+
+export function createLocalCategoryRemoteSnapshot(
+  brand: Brand,
+  overrides: LocalCategoryOverrides,
+  categories: Category[] = [],
+) {
+  return buildLocalCategoryRemoteSnapshot(brand, overrides, categories);
+}
+
+export function hydrateLocalCategoryOverridesFromRemoteSnapshot(
+  brand: Brand,
+  snapshot: unknown,
+) {
+  return saveLocalCategoryOverrides(
+    brand,
+    normalizeLocalCategoryOverrides(extractRemoteLocalCategoryOverrides(snapshot)),
+  );
+}
+
+export async function persistLocalCategoryOverrides(
+  brand: Brand,
+  overrides: LocalCategoryOverrides,
+  options: PersistLocalCategoryOverridesOptions = {},
+) {
+  const normalizedOverrides = saveLocalCategoryOverrides(brand, overrides);
+  const payload = buildLocalCategoryRemoteSnapshot(
+    brand,
+    normalizedOverrides,
+    options.categories ?? [],
+  );
+  let response: unknown;
+
+  if (options.persist) {
+    response = await options.persist(payload);
+  } else if (options.request) {
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch?.bind(globalThis);
+
+    if (!fetchImpl) {
+      throw new Error(
+        'persistLocalCategoryOverrides requires a fetch implementation when request options are provided.',
+      );
+    }
+
+    const requestBody = options.request.mapBody?.(payload) ?? payload;
+    const remoteResponse = await fetchImpl(options.request.url, {
+      ...options.request.init,
+      method: options.request.method ?? 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.request.headers ?? {}),
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!remoteResponse.ok) {
+      throw new Error(
+        `Failed to persist local category overrides for ${brand}: ${remoteResponse.status} ${remoteResponse.statusText}`,
+      );
+    }
+
+    const responseContentType = remoteResponse.headers.get('content-type') ?? '';
+    response = responseContentType.includes('application/json')
+      ? await remoteResponse.json()
+      : await remoteResponse.text();
+  } else {
+    return {
+      overrides: normalizedOverrides,
+    } satisfies PersistLocalCategoryOverridesResult;
+  }
+
+  const remoteSnapshot =
+    options.mapResponseToSnapshot?.(response) ??
+    options.request?.mapResponseToSnapshot?.(response) ??
+    response;
+
+  return {
+    overrides:
+      remoteSnapshot === undefined || !shouldHydrateLocalCategoryOverridesFromSnapshot(remoteSnapshot)
+        ? normalizedOverrides
+        : hydrateLocalCategoryOverridesFromRemoteSnapshot(brand, remoteSnapshot),
+    response,
+  } satisfies PersistLocalCategoryOverridesResult;
 }
 
 export function upsertLocalCategory(
@@ -1203,6 +1430,8 @@ export function moveLocalCategoryDown(
 }
 
 export function clearLocalCategoryOverrides(brand: Brand) {
+  setCachedLocalCategoryOverrides(brand, createEmptyLocalCategoryOverrides());
+
   if (!canUseCategoryStorage()) {
     return;
   }
