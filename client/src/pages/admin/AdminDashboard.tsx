@@ -61,6 +61,25 @@ type LocalCatalogStatus = {
   deletedProductsCount: number;
 };
 
+type LocalCategoryStatus = {
+  touchedCategoriesCount: number;
+  localCategoriesCount: number;
+  deletedCategoriesCount: number;
+  uncategorizedProductsCount: number;
+};
+
+type StoredLocalCategory = {
+  id: string;
+  name: string;
+};
+
+type StoredLocalCategoryOverrides = {
+  categories: StoredLocalCategory[];
+  deletedCategoryIds: string[];
+};
+
+const LOCAL_CATEGORY_STORAGE_PREFIXES = ['catalog_local_categories', 'catalog_local_category'] as const;
+
 function formatCurrency(value: number) {
   return currencyFormatter.format(value || 0);
 }
@@ -123,6 +142,94 @@ function brandLabel(brand: string) {
 
 function isBetweenDates(date: Date | null, start: Date, end: Date) {
   return Boolean(date && date >= start && date < end);
+}
+
+function normalizeStorageText(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function safeParseStorageJson<T>(rawValue: string | null, fallbackValue: T): T {
+  if (!rawValue) {
+    return fallbackValue;
+  }
+
+  try {
+    return JSON.parse(rawValue) as T;
+  } catch {
+    return fallbackValue;
+  }
+}
+
+function canUseBrowserStorage() {
+  return typeof window !== 'undefined' && typeof localStorage !== 'undefined';
+}
+
+function normalizeLocalCategoryRecord(value: unknown): StoredLocalCategory | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<StoredLocalCategory>;
+  const id = normalizeStorageText(candidate.id);
+  const name = normalizeStorageText(candidate.name);
+
+  if (!id || !name) {
+    return null;
+  }
+
+  return { id, name };
+}
+
+function normalizeLocalCategoryOverrides(value: unknown): StoredLocalCategoryOverrides {
+  const candidate =
+    value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
+  const rawCategories = Array.isArray(candidate?.categories)
+    ? candidate.categories
+    : Array.isArray(value)
+      ? value
+      : [];
+  const rawDeletedCategoryIds = Array.isArray(candidate?.deletedCategoryIds)
+    ? candidate.deletedCategoryIds
+    : Array.isArray(candidate?.deletedIds)
+      ? candidate.deletedIds
+      : [];
+
+  return {
+    categories: rawCategories
+      .map((category) => normalizeLocalCategoryRecord(category))
+      .filter((category): category is StoredLocalCategory => category !== null),
+    deletedCategoryIds: Array.from(
+      new Set(
+        rawDeletedCategoryIds
+          .map((categoryId) => normalizeStorageText(categoryId))
+          .filter((categoryId) => categoryId.length > 0),
+      ),
+    ),
+  };
+}
+
+function getLocalCategoryStorageKeys(brand: 'natura' | 'nikken') {
+  return LOCAL_CATEGORY_STORAGE_PREFIXES.map((prefix) => `${prefix}_${brand}`);
+}
+
+function isLocalCategoryStorageKeyForBrand(key: string | null | undefined, brand: 'natura' | 'nikken') {
+  return key ? getLocalCategoryStorageKeys(brand).includes(key) : false;
+}
+
+function readLocalCategoryOverrides(brand: 'natura' | 'nikken') {
+  if (!canUseBrowserStorage()) {
+    return normalizeLocalCategoryOverrides({});
+  }
+
+  for (const storageKey of getLocalCategoryStorageKeys(brand)) {
+    const parsedValue = safeParseStorageJson<unknown>(localStorage.getItem(storageKey), null);
+
+    if (parsedValue) {
+      return normalizeLocalCategoryOverrides(parsedValue);
+    }
+  }
+
+  return normalizeLocalCategoryOverrides({});
 }
 
 function getUniqueCustomerCount(orders: StoredOrderRecord[]) {
@@ -214,6 +321,12 @@ export default function AdminDashboard() {
     customProductsCount: 0,
     editedProductsCount: 0,
     deletedProductsCount: 0,
+  });
+  const [localCategoryStatus, setLocalCategoryStatus] = useState<LocalCategoryStatus>({
+    touchedCategoriesCount: 0,
+    localCategoriesCount: 0,
+    deletedCategoriesCount: 0,
+    uncategorizedProductsCount: 0,
   });
 
   useEffect(() => {
@@ -307,8 +420,94 @@ export default function AdminDashboard() {
     };
   }, [brand]);
 
+  useEffect(() => {
+    const syncLocalCategoryStatus = () => {
+      const categoryOverrides = readLocalCategoryOverrides(brand);
+      const productOverrides = readLocalCatalogOverrides(brand);
+      const activeLocalProducts = productOverrides.products.filter(
+        (product) => !productOverrides.deletedProductIds.includes(product.id),
+      );
+      const touchedCategoryIds = new Set<string>();
+
+      activeLocalProducts.forEach((product) => {
+        const categoryId = normalizeStorageText(product.categoryId) || 'uncategorized';
+        touchedCategoryIds.add(categoryId);
+      });
+
+      categoryOverrides.categories.forEach((category) => {
+        touchedCategoryIds.add(category.id);
+      });
+
+      categoryOverrides.deletedCategoryIds.forEach((categoryId) => {
+        touchedCategoryIds.add(categoryId);
+      });
+
+      const uncategorizedProductsCount = activeLocalProducts.filter((product) => {
+        const categoryId = normalizeStorageText(product.categoryId);
+        return !categoryId || categoryId === 'uncategorized';
+      }).length;
+
+      setLocalCategoryStatus({
+        touchedCategoriesCount: touchedCategoryIds.size,
+        localCategoriesCount: categoryOverrides.categories.length,
+        deletedCategoriesCount: categoryOverrides.deletedCategoryIds.length,
+        uncategorizedProductsCount,
+      });
+    };
+
+    const handleLocalCatalogChanged = (event: Event) => {
+      const { detail } = event as CustomEvent<{ brand?: string; storageKey?: string }>;
+
+      if (
+        !detail?.brand ||
+        detail.brand === brand ||
+        isLocalCatalogStorageKeyForBrand(detail.storageKey, brand) ||
+        isLocalCategoryStorageKeyForBrand(detail.storageKey, brand)
+      ) {
+        syncLocalCategoryStatus();
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (
+        !event.key ||
+        isLocalCatalogStorageKeyForBrand(event.key, brand) ||
+        isLocalCategoryStorageKeyForBrand(event.key, brand)
+      ) {
+        syncLocalCategoryStatus();
+      }
+    };
+
+    syncLocalCategoryStatus();
+    window.addEventListener(
+      'catalog-local-products-changed',
+      handleLocalCatalogChanged as EventListener,
+    );
+    window.addEventListener(
+      'catalog-local-categories-changed',
+      handleLocalCatalogChanged as EventListener,
+    );
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener(
+        'catalog-local-products-changed',
+        handleLocalCatalogChanged as EventListener,
+      );
+      window.removeEventListener(
+        'catalog-local-categories-changed',
+        handleLocalCatalogChanged as EventListener,
+      );
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [brand]);
+
   const currentDateLabel = formatHeaderDate(new Date());
   const hasLocalCatalogChanges = localCatalogStatus.changesCount > 0;
+  const hasLocalCategoryChanges =
+    localCategoryStatus.touchedCategoriesCount > 0 ||
+    localCategoryStatus.localCategoriesCount > 0 ||
+    localCategoryStatus.deletedCategoriesCount > 0;
 
   const {
     monthlyRevenue,
@@ -446,6 +645,69 @@ export default function AdminDashboard() {
                 <p className="mt-1 text-xs text-slate-400">
                   Productos removidos solo en este dispositivo o sesion.
                 </p>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-slate-100 pt-6">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Categorias locales de {brandLabel(brand)}
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {hasLocalCategoryChanges
+                      ? `${localCategoryStatus.touchedCategoriesCount} categorias reflejan cambios locales en esta marca.`
+                      : 'Sin senales de categorias locales en este momento.'}
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                    hasLocalCategoryChanges
+                      ? 'bg-sky-50 text-sky-700'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {hasLocalCategoryChanges ? 'Categorias con cambios' : 'Categorias estables'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                  <p className="text-sm font-medium text-slate-500">Categorias tocadas</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                    {localCategoryStatus.touchedCategoriesCount}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Detectadas desde productos o ajustes locales de la marca.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                  <p className="text-sm font-medium text-slate-500">Categorias locales</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                    {localCategoryStatus.localCategoriesCount}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Categorias guardadas localmente en este dispositivo.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                  <p className="text-sm font-medium text-slate-500">Ocultas localmente</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                    {localCategoryStatus.deletedCategoriesCount}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Categorias marcadas para ocultarse solo en esta marca.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-sm font-medium text-slate-500">Productos sin categoria</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                    {localCategoryStatus.uncategorizedProductsCount}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Productos locales que aun requieren clasificacion.
+                  </p>
+                </div>
               </div>
             </div>
           </CardContent>

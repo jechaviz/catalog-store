@@ -73,6 +73,8 @@ import {
 
 type StockFilter = 'all' | 'in-stock' | 'out-of-stock';
 type EditorMode = 'create' | 'edit';
+type BrandKey = 'natura' | 'nikken';
+type CategoryEditorMode = 'create' | 'rename';
 
 interface DraftProduct {
   name: string;
@@ -87,8 +89,163 @@ interface DraftProduct {
   benefitsText: string;
 }
 
+interface LocalCategoryOverrides {
+  customCategories: Category[];
+  renamedCategories: Record<string, string>;
+  deletedCategoryIds: string[];
+}
+
+interface DeleteCategoryTarget {
+  category: Category;
+  replacementCategoryId: string;
+  associatedProductCount: number;
+}
+
+const LOCAL_CATEGORY_EVENT = 'catalog-local-categories-changed';
+
 function brandLabel(brand: string) {
   return brand === 'nikken' ? 'Nikken' : 'Natura';
+}
+
+function createEmptyLocalCategoryOverrides(): LocalCategoryOverrides {
+  return {
+    customCategories: [],
+    renamedCategories: {},
+    deletedCategoryIds: [],
+  };
+}
+
+function getLocalCategoryStorageKey(brand: BrandKey) {
+  return `catalog-local-categories:${brand}`;
+}
+
+function normalizeCategoryName(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function readLocalCategoryOverrides(brand: BrandKey): LocalCategoryOverrides {
+  if (typeof window === 'undefined') {
+    return createEmptyLocalCategoryOverrides();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getLocalCategoryStorageKey(brand));
+    if (!raw) {
+      return createEmptyLocalCategoryOverrides();
+    }
+
+    const parsed = JSON.parse(raw) as Partial<LocalCategoryOverrides>;
+    const customCategories = Array.isArray(parsed.customCategories)
+      ? parsed.customCategories
+          .map(category => {
+            if (!category || typeof category !== 'object') {
+              return null;
+            }
+
+            const id = typeof category.id === 'string' ? category.id.trim() : '';
+            const name = normalizeCategoryName(
+              typeof category.name === 'string' ? category.name : '',
+            );
+
+            if (!id || !name) {
+              return null;
+            }
+
+            return { id, name };
+          })
+          .filter((category): category is Category => category !== null)
+      : [];
+
+    const renamedCategories =
+      parsed.renamedCategories && typeof parsed.renamedCategories === 'object'
+        ? Object.fromEntries(
+            Object.entries(parsed.renamedCategories).flatMap(([categoryId, name]) => {
+              const nextId = categoryId.trim();
+              const nextName = normalizeCategoryName(typeof name === 'string' ? name : '');
+
+              return nextId && nextName ? [[nextId, nextName]] : [];
+            }),
+          )
+        : {};
+
+    const deletedCategoryIds = Array.isArray(parsed.deletedCategoryIds)
+      ? Array.from(
+          new Set(
+            parsed.deletedCategoryIds
+              .map(categoryId => (typeof categoryId === 'string' ? categoryId.trim() : ''))
+              .filter(Boolean),
+          ),
+        )
+      : [];
+
+    return {
+      customCategories,
+      renamedCategories,
+      deletedCategoryIds,
+    };
+  } catch {
+    return createEmptyLocalCategoryOverrides();
+  }
+}
+
+function saveLocalCategoryOverrides(brand: BrandKey, overrides: LocalCategoryOverrides) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const storageKey = getLocalCategoryStorageKey(brand);
+  window.localStorage.setItem(storageKey, JSON.stringify(overrides));
+  window.dispatchEvent(
+    new CustomEvent(LOCAL_CATEGORY_EVENT, {
+      detail: { brand, storageKey },
+    }),
+  );
+}
+
+function clearLocalCategoryOverrides(brand: BrandKey) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const storageKey = getLocalCategoryStorageKey(brand);
+  window.localStorage.removeItem(storageKey);
+  window.dispatchEvent(
+    new CustomEvent(LOCAL_CATEGORY_EVENT, {
+      detail: { brand, storageKey },
+    }),
+  );
+}
+
+function hasLocalCategoryChanges(overrides: LocalCategoryOverrides) {
+  return (
+    overrides.customCategories.length > 0 ||
+    Object.keys(overrides.renamedCategories).length > 0 ||
+    overrides.deletedCategoryIds.length > 0
+  );
+}
+
+function createLocalCategoryId() {
+  return `local-category-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function mergeCategories(
+  baseCategories: Category[],
+  overrides: LocalCategoryOverrides,
+): Category[] {
+  const deletedIds = new Set(overrides.deletedCategoryIds);
+
+  const mergedBase = baseCategories
+    .filter(category => !deletedIds.has(category.id))
+    .map(category => ({
+      ...category,
+      name: overrides.renamedCategories[category.id] ?? category.name,
+    }));
+
+  const mergedCustom = overrides.customCategories.filter(
+    category => !deletedIds.has(category.id),
+  );
+
+  return [...mergedBase, ...mergedCustom];
 }
 
 function getDefaultCategoryId(categories: Category[]) {
@@ -149,7 +306,10 @@ function buildDraftFromProduct(product: CatalogProduct): DraftProduct {
 export default function ProductManager() {
   const { brand } = useBrand();
   const [products, setProducts] = useState<CatalogProduct[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [baseCategories, setBaseCategories] = useState<Category[]>([]);
+  const [localCategoryOverrides, setLocalCategoryOverrides] = useState<LocalCategoryOverrides>(
+    () => createEmptyLocalCategoryOverrides(),
+  );
   const [loading, setLoading] = useState(true);
   const [hasLocalChanges, setHasLocalChanges] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -160,10 +320,20 @@ export default function ProductManager() {
   const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CatalogProduct | null>(null);
   const [clearLocalChangesOpen, setClearLocalChangesOpen] = useState(false);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [categoryEditorMode, setCategoryEditorMode] = useState<CategoryEditorMode>('create');
+  const [categoryDraftName, setCategoryDraftName] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [deleteCategoryTarget, setDeleteCategoryTarget] =
+    useState<DeleteCategoryTarget | null>(null);
   const [draft, setDraft] = useState<DraftProduct>(() => createEmptyDraft(brand, []));
+  const categories = useMemo(
+    () => mergeCategories(baseCategories, localCategoryOverrides),
+    [baseCategories, localCategoryOverrides],
+  );
 
   const loadCatalog = async (
-    currentBrand: 'natura' | 'nikken' = brand,
+    currentBrand: BrandKey = brand,
     options?: { preserveDraft?: boolean },
   ) => {
     setLoading(true);
@@ -171,16 +341,29 @@ export default function ProductManager() {
       const data = await fetchCatalogData(currentBrand);
       if (!data) return;
 
-      setProducts(data.products);
-      setCategories(data.categories);
+      const localProductOverrides = readLocalCatalogOverrides(currentBrand);
+      const localCategories = readLocalCategoryOverrides(currentBrand);
+      const mergedCategories = mergeCategories(data.categories, localCategories);
 
-      const localOverrides = readLocalCatalogOverrides(currentBrand);
+      setProducts(data.products);
+      setBaseCategories(data.categories);
+      setLocalCategoryOverrides(localCategories);
       setHasLocalChanges(
-        localOverrides.products.length > 0 || localOverrides.deletedProductIds.length > 0,
+        localProductOverrides.products.length > 0 ||
+          localProductOverrides.deletedProductIds.length > 0 ||
+          hasLocalCategoryChanges(localCategories),
       );
 
       if (!options?.preserveDraft) {
-        setDraft(createEmptyDraft(currentBrand, data.categories));
+        setDraft(createEmptyDraft(currentBrand, mergedCategories));
+      } else {
+        setDraft(prev => ({
+          ...prev,
+          categoryId:
+            mergedCategories.some(category => category.id === prev.categoryId)
+              ? prev.categoryId
+              : getDefaultCategoryId(mergedCategories),
+        }));
       }
     } finally {
       setLoading(false);
@@ -193,7 +376,12 @@ export default function ProductManager() {
     setEditorOpen(false);
     setEditorMode('create');
     setEditingTargetId(null);
+    setCategoryManagerOpen(false);
+    setCategoryEditorMode('create');
+    setCategoryDraftName('');
+    setEditingCategoryId(null);
     setDeleteTarget(null);
+    setDeleteCategoryTarget(null);
     setClearLocalChangesOpen(false);
     setDraft(createEmptyDraft(brand, []));
     void loadCatalog(brand);
@@ -205,7 +393,10 @@ export default function ProductManager() {
     };
 
     const handleStorageEvent = (event: StorageEvent) => {
-      if (isLocalCatalogStorageKeyForBrand(event.key, brand)) {
+      if (
+        isLocalCatalogStorageKeyForBrand(event.key, brand) ||
+        event.key === getLocalCategoryStorageKey(brand)
+      ) {
         syncCatalog();
       }
     };
@@ -220,19 +411,63 @@ export default function ProductManager() {
       }
     };
 
+    const handleLocalCategoryEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{ brand?: string; storageKey?: string }>;
+      if (
+        customEvent.detail?.brand === brand ||
+        customEvent.detail?.storageKey === getLocalCategoryStorageKey(brand)
+      ) {
+        syncCatalog();
+      }
+    };
+
     window.addEventListener('storage', handleStorageEvent);
     window.addEventListener('catalog-local-products-changed', handleLocalCatalogEvent);
+    window.addEventListener(LOCAL_CATEGORY_EVENT, handleLocalCategoryEvent);
 
     return () => {
       window.removeEventListener('storage', handleStorageEvent);
       window.removeEventListener('catalog-local-products-changed', handleLocalCatalogEvent);
+      window.removeEventListener(LOCAL_CATEGORY_EVENT, handleLocalCategoryEvent);
     };
   }, [brand, editorOpen]);
+
+  useEffect(() => {
+    if (categoryFilter !== 'all' && !categories.some(category => category.id === categoryFilter)) {
+      setCategoryFilter('all');
+    }
+  }, [categories, categoryFilter]);
 
   const categoryMap = useMemo(
     () => new Map(categories.map(category => [category.id, category.name])),
     [categories],
   );
+  const baseCategoryMap = useMemo(
+    () => new Map(baseCategories.map(category => [category.id, category.name])),
+    [baseCategories],
+  );
+  const localCategoryIdSet = useMemo(
+    () => new Set(localCategoryOverrides.customCategories.map(category => category.id)),
+    [localCategoryOverrides.customCategories],
+  );
+  const categoryUsageMap = useMemo(() => {
+    const usage = new Map<string, number>();
+    for (const product of products) {
+      usage.set(product.categoryId, (usage.get(product.categoryId) ?? 0) + 1);
+    }
+    return usage;
+  }, [products]);
+  const categoryDeleteOptions = useMemo(() => {
+    if (!deleteCategoryTarget) {
+      return [];
+    }
+
+    return categories.filter(category => category.id !== deleteCategoryTarget.category.id);
+  }, [categories, deleteCategoryTarget]);
+  const hasLocalCategoryOverrides = hasLocalCategoryChanges(localCategoryOverrides);
+  const localCategoryCount = localCategoryOverrides.customCategories.length;
+  const renamedCategoryCount = Object.keys(localCategoryOverrides.renamedCategories).length;
+  const hiddenCategoryCount = localCategoryOverrides.deletedCategoryIds.length;
 
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -262,6 +497,27 @@ export default function ProductManager() {
     [draft.deliveryMethodsText],
   );
   const previewImageUrl = draft.imageUrl.trim() || getProductFallbackImage(brand);
+
+  const syncHasLocalChanges = (nextCategoryOverrides: LocalCategoryOverrides) => {
+    const localProductOverrides = readLocalCatalogOverrides(brand);
+    setHasLocalChanges(
+      localProductOverrides.products.length > 0 ||
+        localProductOverrides.deletedProductIds.length > 0 ||
+        hasLocalCategoryChanges(nextCategoryOverrides),
+    );
+  };
+
+  const persistCategoryOverrides = (nextOverrides: LocalCategoryOverrides) => {
+    setLocalCategoryOverrides(nextOverrides);
+    syncHasLocalChanges(nextOverrides);
+    saveLocalCategoryOverrides(brand, nextOverrides);
+  };
+
+  const resetCategoryEditor = () => {
+    setCategoryEditorMode('create');
+    setCategoryDraftName('');
+    setEditingCategoryId(null);
+  };
 
   const closeEditor = () => {
     setEditorOpen(false);
@@ -294,6 +550,20 @@ export default function ProductManager() {
     setEditorOpen(true);
   };
 
+  const handleCategoryManagerOpenChange = (open: boolean) => {
+    setCategoryManagerOpen(open);
+    if (!open) {
+      resetCategoryEditor();
+    }
+  };
+
+  const openRenameCategory = (category: Category) => {
+    setCategoryManagerOpen(true);
+    setCategoryEditorMode('rename');
+    setEditingCategoryId(category.id);
+    setCategoryDraftName(category.name);
+  };
+
   const handleEditorOpenChange = (open: boolean) => {
     if (!open) {
       closeEditor();
@@ -301,6 +571,90 @@ export default function ProductManager() {
     }
 
     setEditorOpen(true);
+  };
+
+  const handleSaveCategory = () => {
+    const nextName = normalizeCategoryName(categoryDraftName);
+
+    if (!nextName) {
+      toast.error('Escribe un nombre para la categoria.');
+      return;
+    }
+
+    const duplicateCategory = categories.find(category => {
+      if (categoryEditorMode === 'rename' && category.id === editingCategoryId) {
+        return false;
+      }
+
+      return category.name.trim().toLowerCase() === nextName.toLowerCase();
+    });
+
+    if (duplicateCategory) {
+      toast.error('Ya existe una categoria con ese nombre en esta marca.');
+      return;
+    }
+
+    const nextOverrides: LocalCategoryOverrides = {
+      customCategories: [...localCategoryOverrides.customCategories],
+      renamedCategories: { ...localCategoryOverrides.renamedCategories },
+      deletedCategoryIds: [...localCategoryOverrides.deletedCategoryIds],
+    };
+
+    let createdCategory: Category | null = null;
+
+    if (categoryEditorMode === 'create') {
+      createdCategory = {
+        id: createLocalCategoryId(),
+        name: nextName,
+      };
+      nextOverrides.customCategories = [createdCategory, ...nextOverrides.customCategories];
+    } else {
+      if (!editingCategoryId) {
+        toast.error('No encontramos la categoria a renombrar.');
+        return;
+      }
+
+      if (localCategoryIdSet.has(editingCategoryId)) {
+        nextOverrides.customCategories = nextOverrides.customCategories.map(category =>
+          category.id === editingCategoryId ? { ...category, name: nextName } : category,
+        );
+      } else {
+        const baseName = baseCategoryMap.get(editingCategoryId);
+        if (!baseName) {
+          toast.error('La categoria base ya no esta disponible.');
+          return;
+        }
+
+        if (baseName === nextName) {
+          delete nextOverrides.renamedCategories[editingCategoryId];
+        } else {
+          nextOverrides.renamedCategories[editingCategoryId] = nextName;
+        }
+
+        nextOverrides.deletedCategoryIds = nextOverrides.deletedCategoryIds.filter(
+          categoryId => categoryId !== editingCategoryId,
+        );
+      }
+    }
+
+    persistCategoryOverrides(nextOverrides);
+
+    if (createdCategory) {
+      setDraft(prev => ({
+        ...prev,
+        categoryId:
+          editorOpen || prev.categoryId === 'uncategorized'
+            ? createdCategory.id
+            : prev.categoryId,
+      }));
+    }
+
+    resetCategoryEditor();
+    toast.success(
+      categoryEditorMode === 'create'
+        ? `Categoria creada localmente para ${brandLabel(brand)}.`
+        : `Categoria actualizada localmente para ${brandLabel(brand)}.`,
+    );
   };
 
   const handleSaveProduct = () => {
@@ -371,6 +725,104 @@ export default function ProductManager() {
     );
   };
 
+  const promptDeleteCategory = (category: Category) => {
+    const associatedProductCount = categoryUsageMap.get(category.id) ?? 0;
+    const replacementCategoryId =
+      categories.find(candidate => candidate.id !== category.id)?.id ?? '';
+
+    if (associatedProductCount > 0 && !replacementCategoryId) {
+      toast.error(
+        'Crea otra categoria antes de eliminar esta, porque todavia hay productos asociados.',
+      );
+      return;
+    }
+
+    setDeleteCategoryTarget({
+      category,
+      replacementCategoryId,
+      associatedProductCount,
+    });
+  };
+
+  const deleteCategory = () => {
+    if (!deleteCategoryTarget) {
+      return;
+    }
+
+    const { category, replacementCategoryId, associatedProductCount } = deleteCategoryTarget;
+
+    if (associatedProductCount > 0 && !replacementCategoryId) {
+      toast.error('Selecciona una categoria de reemplazo para los productos asociados.');
+      return;
+    }
+
+    const reassignedProducts =
+      associatedProductCount > 0
+        ? products.filter(product => product.categoryId === category.id)
+        : [];
+
+    if (associatedProductCount > 0) {
+      setProducts(prev =>
+        prev.map(product =>
+          product.categoryId === category.id
+            ? { ...product, categoryId: replacementCategoryId }
+            : product,
+        ),
+      );
+
+      for (const product of reassignedProducts) {
+        upsertLocalCatalogProduct(brand, {
+          ...product,
+          categoryId: replacementCategoryId,
+        });
+      }
+    }
+
+    const nextOverrides: LocalCategoryOverrides = {
+      customCategories: [...localCategoryOverrides.customCategories],
+      renamedCategories: { ...localCategoryOverrides.renamedCategories },
+      deletedCategoryIds: [...localCategoryOverrides.deletedCategoryIds],
+    };
+
+    if (localCategoryIdSet.has(category.id)) {
+      nextOverrides.customCategories = nextOverrides.customCategories.filter(
+        localCategory => localCategory.id !== category.id,
+      );
+    } else {
+      nextOverrides.deletedCategoryIds = Array.from(
+        new Set([...nextOverrides.deletedCategoryIds, category.id]),
+      );
+      delete nextOverrides.renamedCategories[category.id];
+    }
+
+    persistCategoryOverrides(nextOverrides);
+
+    if (draft.categoryId === category.id) {
+      const fallbackCategoryId =
+        replacementCategoryId ||
+        getDefaultCategoryId(categories.filter(candidate => candidate.id !== category.id));
+      setDraft(prev => ({
+        ...prev,
+        categoryId: fallbackCategoryId,
+      }));
+    }
+
+    if (categoryFilter === category.id) {
+      setCategoryFilter(replacementCategoryId || 'all');
+    }
+
+    if (editingCategoryId === category.id) {
+      resetCategoryEditor();
+    }
+
+    setDeleteCategoryTarget(null);
+    toast.success(
+      associatedProductCount > 0
+        ? `Categoria eliminada y ${associatedProductCount} producto(s) reasignado(s).`
+        : `Categoria eliminada localmente para ${brandLabel(brand)}.`,
+    );
+  };
+
   const toggleStock = (productId: string) => {
     const targetProduct = products.find(product => product.id === productId);
     if (!targetProduct) return;
@@ -402,8 +854,12 @@ export default function ProductManager() {
     setLoading(true);
     try {
       clearLocalCatalogOverrides(brand);
+      clearLocalCategoryOverrides(brand);
       closeEditor();
+      setCategoryManagerOpen(false);
+      resetCategoryEditor();
       setDeleteTarget(null);
+      setDeleteCategoryTarget(null);
       setClearLocalChangesOpen(false);
       await loadCatalog(brand);
       toast.success(`Cambios locales de ${brandLabel(brand)} limpiados.`);
@@ -446,6 +902,13 @@ export default function ProductManager() {
                 Limpiar cambios locales
               </Button>
             )}
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => setCategoryManagerOpen(true)}
+            >
+              Gestionar categorias
+            </Button>
             <Button className="rounded-xl flex items-center gap-2" onClick={openCreateDialog}>
               <Plus size={18} />
               Nuevo Producto
@@ -566,12 +1029,27 @@ export default function ProductManager() {
                 >
                   {exportProducts.length} de {products.length} productos visibles
                 </Badge>
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-slate-200 px-3 py-1 text-slate-500"
+                >
+                  {categories.length} categorias activas
+                </Badge>
                 {hasLocalChanges && (
                   <Badge
                     variant="outline"
                     className="rounded-full border-amber-200 px-3 py-1 text-amber-700"
                   >
                     Cambios locales persistentes para {brandLabel(brand)}
+                  </Badge>
+                )}
+                {hasLocalCategoryOverrides && (
+                  <Badge
+                    variant="outline"
+                    className="rounded-full border-sky-200 px-3 py-1 text-sky-700"
+                  >
+                    Categorias locales: {localCategoryCount} nuevas, {renamedCategoryCount}{' '}
+                    renombradas, {hiddenCategoryCount} ocultas
                   </Badge>
                 )}
                 {stockFilter !== 'all' && (
@@ -747,6 +1225,161 @@ export default function ProductManager() {
         </Card>
       </div>
 
+      <Dialog open={categoryManagerOpen} onOpenChange={handleCategoryManagerOpenChange}>
+        <DialogContent className="sm:max-w-3xl rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Gestionar categorias locales</DialogTitle>
+            <DialogDescription>
+              Crea, renombra u oculta categorias solo para {brandLabel(brand)} en este
+              navegador. Si una categoria todavia tiene productos, te pediremos una
+              reasignacion antes de eliminarla.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <div className="flex-1">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    {categoryEditorMode === 'create'
+                      ? 'Nueva categoria local'
+                      : 'Renombrar categoria'}
+                  </label>
+                  <Input
+                    value={categoryDraftName}
+                    onChange={event => setCategoryDraftName(event.target.value)}
+                    className="mt-2 rounded-xl"
+                    placeholder="Ej. Bienestar diario"
+                  />
+                  <p className="mt-2 text-xs text-slate-400">
+                    Este cambio se guarda por marca y no modifica el catalogo remoto.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {categoryEditorMode === 'rename' && (
+                    <Button
+                      variant="outline"
+                      className="rounded-xl"
+                      onClick={resetCategoryEditor}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
+                  <Button className="rounded-xl" onClick={handleSaveCategory}>
+                    {categoryEditorMode === 'create' ? 'Guardar categoria' : 'Guardar nombre'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <Badge variant="outline" className="rounded-full border-slate-200 px-3 py-1">
+                  {categories.length} categorias visibles
+                </Badge>
+                <Badge variant="outline" className="rounded-full border-slate-200 px-3 py-1">
+                  {Array.from(categoryUsageMap.values()).reduce((sum, count) => sum + count, 0)}{' '}
+                  asignaciones de productos
+                </Badge>
+              </div>
+
+              <ScrollArea className="max-h-[48vh] pr-3">
+                <div className="space-y-3">
+                  {categories.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-sm text-slate-500">
+                      No hay categorias activas. Crea una para empezar a clasificar productos.
+                    </div>
+                  ) : (
+                    categories.map(category => {
+                      const productCount = categoryUsageMap.get(category.id) ?? 0;
+                      const isLocalCategory = localCategoryIdSet.has(category.id);
+                      const wasRenamed =
+                        !isLocalCategory &&
+                        localCategoryOverrides.renamedCategories[category.id] !== undefined;
+                      const originalName = baseCategoryMap.get(category.id);
+
+                      return (
+                        <div
+                          key={category.id}
+                          className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                        >
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold text-slate-900">{category.name}</p>
+                                {isLocalCategory ? (
+                                  <Badge className="rounded-full bg-sky-100 text-sky-700 hover:bg-sky-100">
+                                    Local
+                                  </Badge>
+                                ) : wasRenamed ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="rounded-full border-amber-200 text-amber-700"
+                                  >
+                                    Renombrada
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="rounded-full border-slate-200 text-slate-500"
+                                  >
+                                    Base
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="mt-2 text-sm text-slate-500">
+                                {productCount} producto{productCount === 1 ? '' : 's'} asociado
+                                {productCount === 1 ? '' : 's'}
+                              </p>
+                              {wasRenamed && originalName && (
+                                <p className="mt-1 text-xs text-slate-400">
+                                  Nombre base: {originalName}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="rounded-lg"
+                                onClick={() => openRenameCategory(category)}
+                              >
+                                <Edit3 size={14} />
+                                Renombrar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                onClick={() => promptDeleteCategory(category)}
+                              >
+                                <Trash2 size={14} />
+                                Eliminar
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => handleCategoryManagerOpenChange(false)}
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={editorOpen} onOpenChange={handleEditorOpenChange}>
         <DialogContent className="sm:max-w-5xl rounded-3xl p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6">
@@ -804,6 +1437,9 @@ export default function ProductManager() {
                       )}
                     </SelectContent>
                   </Select>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Puedes crear, renombrar u ocultar categorias desde "Gestionar categorias".
+                  </p>
                 </div>
 
                 <div>
@@ -1045,6 +1681,67 @@ export default function ProductManager() {
               onClick={deleteProduct}
             >
               Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!deleteCategoryTarget}
+        onOpenChange={open => !open && setDeleteCategoryTarget(null)}
+      >
+        <AlertDialogContent className="rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar categoria local</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteCategoryTarget
+                ? deleteCategoryTarget.associatedProductCount > 0
+                  ? `La categoria "${deleteCategoryTarget.category.name}" todavia tiene ${deleteCategoryTarget.associatedProductCount} producto(s). Antes de eliminarla, reasignaremos esos productos a otra categoria local o base.`
+                  : `Quitaremos "${deleteCategoryTarget.category.name}" solo del catalogo local de ${brandLabel(brand)} en este navegador.`
+                : 'Confirma la eliminacion de la categoria.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {deleteCategoryTarget && deleteCategoryTarget.associatedProductCount > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Reasignar productos a
+              </label>
+              <Select
+                value={deleteCategoryTarget.replacementCategoryId}
+                onValueChange={value =>
+                  setDeleteCategoryTarget(prev =>
+                    prev
+                      ? {
+                          ...prev,
+                          replacementCategoryId: value,
+                        }
+                      : prev,
+                  )
+                }
+              >
+                <SelectTrigger className="rounded-xl w-full">
+                  <SelectValue placeholder="Selecciona una categoria de destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoryDeleteOptions.map(category => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">
+                No perderemos esos productos: solo moveremos su categoria dentro de la
+                persistencia local de esta marca.
+              </p>
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="rounded-xl bg-rose-600 hover:bg-rose-700" onClick={deleteCategory}>
+              Eliminar categoria
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
