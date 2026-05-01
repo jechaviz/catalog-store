@@ -1,6 +1,12 @@
 import { client as odooClient, getOdooImageUrl } from './odoo';
 import { GET_PRODUCTS, GET_CATEGORIES } from './odooQueries';
 import { applyLocalCatalogOverrides, readLocalCatalogOverrides } from './adminCatalogStorage';
+import {
+    applyLocalCategoryOverrides as applyStoredLocalCategoryOverrides,
+    getLocalCategoryStorageKey,
+    readLocalCategoryOverrides as readStoredLocalCategoryOverrides,
+    type LocalCategoryOverrides as StoredLocalCategoryOverrides,
+} from './adminCategoryStorage';
 
 export interface Category {
     id: string;
@@ -29,14 +35,54 @@ export interface CatalogData {
     products: CatalogProduct[];
 }
 
-interface LocalCategoryOverrides {
-    categories: Category[];
-    deletedCategoryIds: string[];
-}
+type BrandKey = 'natura' | 'nikken';
 
-const LOCAL_CATEGORY_STORAGE_KEYS = [
-    'catalog_local_categories',
-    'catalog_local_category_overrides',
+const UNCATEGORIZED_CATEGORY_ID = 'uncategorized';
+const LEGACY_LOCAL_CATEGORY_STORAGE_KEY_FACTORIES = [
+    (brand: BrandKey) => `catalog-local-categories:${brand}`,
+    (brand: BrandKey) => `catalog_local_category_${brand}`,
+    (brand: BrandKey) => `catalog_local_category_overrides_${brand}`,
+] as const;
+const CATEGORY_ARRAY_KEYS = [
+    'categories',
+    'localCategories',
+    'customCategories',
+    'items',
+    'list',
+    'overrides',
+] as const;
+const CATEGORY_NAME_MAP_KEYS = [
+    'renamedCategories',
+    'categoryNames',
+    'namesById',
+] as const;
+const CATEGORY_SORT_MAP_KEYS = [
+    'sortOrders',
+    'sortOrderById',
+    'categorySortOrder',
+    'categoryOrder',
+] as const;
+const CATEGORY_VISIBILITY_MAP_KEYS = [
+    'categoryVisibility',
+    'visibilityById',
+    'visibleById',
+] as const;
+const CATEGORY_HIDDEN_MAP_KEYS = [
+    'hiddenById',
+    'hiddenCategories',
+] as const;
+const CATEGORY_VISIBLE_ID_LIST_KEYS = [
+    'visibleCategoryIds',
+    'shownCategoryIds',
+] as const;
+const CATEGORY_HIDDEN_ID_LIST_KEYS = [
+    'hiddenCategoryIds',
+    'hiddenIds',
+] as const;
+const CATEGORY_DELETED_ID_LIST_KEYS = [
+    'deletedCategoryIds',
+    'deletedIds',
+    'removedCategoryIds',
 ] as const;
 
 const NATURA_MOCK_DATA: CatalogData = {
@@ -233,6 +279,62 @@ function normalizeCategoryText(value: unknown) {
     return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
 }
 
+function normalizeCategorySortOrder(value: unknown) {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+    }
+
+    if (typeof value === 'string') {
+        const trimmedValue = value.trim();
+        if (!trimmedValue) {
+            return null;
+        }
+
+        const numericValue = Number(trimmedValue);
+        return Number.isFinite(numericValue) ? numericValue : null;
+    }
+
+    return null;
+}
+
+function normalizeCategoryVisibility(value: unknown) {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'number') {
+        if (value === 1) {
+            return true;
+        }
+
+        if (value === 0) {
+            return false;
+        }
+
+        return null;
+    }
+
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const normalizedValue = value.trim().toLowerCase();
+
+    if (!normalizedValue) {
+        return null;
+    }
+
+    if (['1', 'true', 'yes', 'on', 'visible', 'show', 'shown', 'active', 'enabled'].includes(normalizedValue)) {
+        return true;
+    }
+
+    if (['0', 'false', 'no', 'off', 'hidden', 'hide', 'deleted', 'inactive', 'disabled'].includes(normalizedValue)) {
+        return false;
+    }
+
+    return null;
+}
+
 function normalizeCategoryRecord(value: unknown): Category | null {
     if (!value || typeof value !== 'object') {
         return null;
@@ -249,7 +351,7 @@ function normalizeCategoryRecord(value: unknown): Category | null {
     return { id, name };
 }
 
-function normalizeDeletedCategoryIds(value: unknown) {
+function normalizeCategoryIdList(value: unknown) {
     const rawValues = Array.isArray(value)
         ? value
         : typeof value === 'string'
@@ -263,76 +365,310 @@ function normalizeDeletedCategoryIds(value: unknown) {
     ));
 }
 
-function normalizeLocalCategoryOverrides(value: unknown): LocalCategoryOverrides {
+interface CategoryPresentationState {
+    name?: string;
+    sortOrder?: number;
+    isVisible?: boolean;
+}
+
+interface ParsedLocalCategorySnapshot {
+    overrides: StoredLocalCategoryOverrides;
+    presentationById: Map<string, CategoryPresentationState>;
+}
+
+function createEmptyStoredLocalCategoryOverrides(): StoredLocalCategoryOverrides {
+    return {
+        categories: [],
+        deletedCategoryIds: [],
+    };
+}
+
+function mergeCategoryPresentationState(
+    target: Map<string, CategoryPresentationState>,
+    categoryId: string,
+    patch: CategoryPresentationState,
+) {
+    if (!categoryId) {
+        return;
+    }
+
+    const currentState = target.get(categoryId) ?? {};
+    const nextState: CategoryPresentationState = { ...currentState };
+
+    if (patch.name) {
+        nextState.name = patch.name;
+    }
+
+    if (patch.sortOrder !== undefined) {
+        nextState.sortOrder = patch.sortOrder;
+    }
+
+    if (patch.isVisible !== undefined) {
+        nextState.isVisible = patch.isVisible;
+    }
+
+    target.set(categoryId, nextState);
+}
+
+function extractVisibilityFromCategoryRecord(record: Record<string, unknown>) {
+    const visibleFlags = [record.visible, record.isVisible, record.active, record.enabled];
+
+    for (const flag of visibleFlags) {
+        const normalizedFlag = normalizeCategoryVisibility(flag);
+        if (normalizedFlag !== null) {
+            return normalizedFlag;
+        }
+    }
+
+    const hiddenFlags = [record.hidden, record.isHidden, record.disabled];
+
+    for (const flag of hiddenFlags) {
+        const normalizedFlag = normalizeCategoryVisibility(flag);
+        if (normalizedFlag !== null) {
+            return !normalizedFlag;
+        }
+    }
+
+    return undefined;
+}
+
+function extractSortOrderFromCategoryRecord(record: Record<string, unknown>) {
+    const rawSortValues = [record.sortOrder, record.order, record.position, record.index];
+
+    for (const rawSortValue of rawSortValues) {
+        const normalizedSortOrder = normalizeCategorySortOrder(rawSortValue);
+        if (normalizedSortOrder !== null) {
+            return normalizedSortOrder;
+        }
+    }
+
+    return null;
+}
+
+function collectCategoryArrayValues(candidate: Record<string, unknown>) {
+    return CATEGORY_ARRAY_KEYS.flatMap(key =>
+        Array.isArray(candidate[key]) ? candidate[key] : [],
+    );
+}
+
+function parseCategoryNameMap(candidate: Record<string, unknown>) {
+    const nameEntries = new Map<string, string>();
+
+    CATEGORY_NAME_MAP_KEYS.forEach(key => {
+        const rawValue = candidate[key];
+
+        if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+            return;
+        }
+
+        Object.entries(rawValue).forEach(([categoryId, categoryName]) => {
+            const normalizedCategoryId = normalizeCategoryText(categoryId);
+            const normalizedCategoryName = normalizeCategoryText(categoryName);
+
+            if (normalizedCategoryId && normalizedCategoryName) {
+                nameEntries.set(normalizedCategoryId, normalizedCategoryName);
+            }
+        });
+    });
+
+    return nameEntries;
+}
+
+function parseCategorySortOrderMap(candidate: Record<string, unknown>) {
+    const sortOrderEntries = new Map<string, number>();
+
+    CATEGORY_SORT_MAP_KEYS.forEach(key => {
+        const rawValue = candidate[key];
+
+        if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+            return;
+        }
+
+        Object.entries(rawValue).forEach(([categoryId, sortOrder]) => {
+            const normalizedCategoryId = normalizeCategoryText(categoryId);
+            const normalizedSortOrder = normalizeCategorySortOrder(sortOrder);
+
+            if (normalizedCategoryId && normalizedSortOrder !== null) {
+                sortOrderEntries.set(normalizedCategoryId, normalizedSortOrder);
+            }
+        });
+    });
+
+    return sortOrderEntries;
+}
+
+function parseCategoryVisibilityMap(
+    candidate: Record<string, unknown>,
+    keys: readonly string[],
+    invertVisibility = false,
+) {
+    const visibilityEntries = new Map<string, boolean>();
+
+    keys.forEach(key => {
+        const rawValue = candidate[key];
+
+        if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+            return;
+        }
+
+        Object.entries(rawValue).forEach(([categoryId, rawVisibility]) => {
+            const normalizedCategoryId = normalizeCategoryText(categoryId);
+            const normalizedVisibility = normalizeCategoryVisibility(rawVisibility);
+
+            if (normalizedCategoryId && normalizedVisibility !== null) {
+                visibilityEntries.set(
+                    normalizedCategoryId,
+                    invertVisibility ? !normalizedVisibility : normalizedVisibility,
+                );
+            }
+        });
+    });
+
+    return visibilityEntries;
+}
+
+function parseLocalCategorySnapshot(value: unknown): ParsedLocalCategorySnapshot {
+    const categoryMap = new Map<string, Category>();
+    const deletedCategoryIds = new Set<string>();
+    const presentationById = new Map<string, CategoryPresentationState>();
+
+    const registerCategory = (rawCategory: unknown) => {
+        const normalizedCategory = normalizeCategoryRecord(rawCategory);
+
+        if (!normalizedCategory) {
+            return;
+        }
+
+        categoryMap.set(normalizedCategory.id, normalizedCategory);
+        deletedCategoryIds.delete(normalizedCategory.id);
+
+        mergeCategoryPresentationState(presentationById, normalizedCategory.id, {
+            name: normalizedCategory.name,
+            isVisible: true,
+        });
+
+        if (rawCategory && typeof rawCategory === 'object') {
+            const categoryRecord = rawCategory as Record<string, unknown>;
+            const sortOrder = extractSortOrderFromCategoryRecord(categoryRecord);
+            const isVisible = extractVisibilityFromCategoryRecord(categoryRecord);
+
+            mergeCategoryPresentationState(presentationById, normalizedCategory.id, {
+                sortOrder: sortOrder ?? undefined,
+                isVisible,
+            });
+        }
+    };
+
     if (Array.isArray(value)) {
+        value.forEach(registerCategory);
+
         return {
-            categories: value
-                .map(category => normalizeCategoryRecord(category))
-                .filter((category): category is Category => category !== null),
-            deletedCategoryIds: [],
+            overrides: {
+                categories: Array.from(categoryMap.values()),
+                deletedCategoryIds: [],
+            },
+            presentationById,
         };
     }
 
     if (!value || typeof value !== 'object') {
         return {
-            categories: [],
-            deletedCategoryIds: [],
+            overrides: createEmptyStoredLocalCategoryOverrides(),
+            presentationById,
         };
     }
 
     const candidate = value as Record<string, unknown>;
-    const rawCategories =
-        candidate.categories ??
-        candidate.localCategories ??
-        candidate.items ??
-        [];
-    const rawDeletedCategoryIds =
-        candidate.deletedCategoryIds ??
-        candidate.deletedIds ??
-        candidate.removedCategoryIds ??
-        [];
+    collectCategoryArrayValues(candidate).forEach(registerCategory);
 
-    return {
-        categories: Array.isArray(rawCategories)
-            ? rawCategories
-                .map(category => normalizeCategoryRecord(category))
-                .filter((category): category is Category => category !== null)
-            : [],
-        deletedCategoryIds: normalizeDeletedCategoryIds(rawDeletedCategoryIds),
-    };
-}
+    parseCategoryNameMap(candidate).forEach((categoryName, categoryId) => {
+        mergeCategoryPresentationState(presentationById, categoryId, { name: categoryName });
+    });
 
-function getLocalCategoryStorageKeysForBrand(brand: 'natura' | 'nikken') {
-    return LOCAL_CATEGORY_STORAGE_KEYS.map(prefix => `${prefix}_${brand}`);
-}
+    parseCategorySortOrderMap(candidate).forEach((sortOrder, categoryId) => {
+        mergeCategoryPresentationState(presentationById, categoryId, { sortOrder });
+    });
 
-function readLocalCategoryOverrides(brand: 'natura' | 'nikken') {
-    if (!canUseBrowserStorage()) {
-        return normalizeLocalCategoryOverrides(null);
-    }
+    parseCategoryVisibilityMap(candidate, CATEGORY_VISIBILITY_MAP_KEYS).forEach((isVisible, categoryId) => {
+        mergeCategoryPresentationState(presentationById, categoryId, { isVisible });
+    });
 
-    const mergedCategoryMap = new Map<string, Category>();
-    const deletedCategoryIds = new Set<string>();
+    parseCategoryVisibilityMap(candidate, CATEGORY_HIDDEN_MAP_KEYS, true).forEach((isVisible, categoryId) => {
+        mergeCategoryPresentationState(presentationById, categoryId, { isVisible });
+    });
 
-    getLocalCategoryStorageKeysForBrand(brand).forEach(storageKey => {
-        const parsedValue = safeParseJson<unknown>(localStorage.getItem(storageKey), null);
-        const normalizedValue = normalizeLocalCategoryOverrides(parsedValue);
-
-        normalizedValue.categories.forEach(category => {
-            mergedCategoryMap.set(category.id, { ...category });
-            deletedCategoryIds.delete(category.id);
+    CATEGORY_VISIBLE_ID_LIST_KEYS.forEach(key => {
+        normalizeCategoryIdList(candidate[key]).forEach(categoryId => {
+            mergeCategoryPresentationState(presentationById, categoryId, { isVisible: true });
         });
+    });
 
-        normalizedValue.deletedCategoryIds.forEach(categoryId => {
+    CATEGORY_HIDDEN_ID_LIST_KEYS.forEach(key => {
+        normalizeCategoryIdList(candidate[key]).forEach(categoryId => {
+            mergeCategoryPresentationState(presentationById, categoryId, { isVisible: false });
+        });
+    });
+
+    CATEGORY_DELETED_ID_LIST_KEYS.forEach(key => {
+        normalizeCategoryIdList(candidate[key]).forEach(categoryId => {
             deletedCategoryIds.add(categoryId);
-            mergedCategoryMap.delete(categoryId);
+            categoryMap.delete(categoryId);
+            mergeCategoryPresentationState(presentationById, categoryId, { isVisible: false });
         });
     });
 
     return {
-        categories: Array.from(mergedCategoryMap.values()),
-        deletedCategoryIds: Array.from(deletedCategoryIds),
-    } satisfies LocalCategoryOverrides;
+        overrides: {
+            categories: Array.from(categoryMap.values()),
+            deletedCategoryIds: Array.from(deletedCategoryIds),
+        },
+        presentationById,
+    };
+}
+
+function getOrderedLocalCategoryStorageKeys(brand: BrandKey) {
+    const canonicalStorageKey = getLocalCategoryStorageKey(brand);
+    const knownStorageKeys = [
+        ...LEGACY_LOCAL_CATEGORY_STORAGE_KEY_FACTORIES.map(factory => factory(brand)),
+        canonicalStorageKey,
+    ];
+
+    if (!canUseBrowserStorage()) {
+        return knownStorageKeys;
+    }
+
+    const discoveredStorageKeys = Object.keys(localStorage)
+        .filter(storageKey => {
+            const normalizedKey = storageKey.toLowerCase();
+            return (
+                normalizedKey.includes(brand) &&
+                normalizedKey.includes('local') &&
+                normalizedKey.includes('categor')
+            );
+        })
+        .sort();
+
+    return Array.from(new Set([...knownStorageKeys, ...discoveredStorageKeys]));
+}
+
+function sortCategoriesByPresentation(
+    categories: Category[],
+    presentationById: Map<string, CategoryPresentationState>,
+) {
+    return categories
+        .map((category, index) => {
+            const sortOrder = presentationById.get(category.id)?.sortOrder;
+            return {
+                category: { ...category },
+                index,
+                effectiveSortOrder: sortOrder ?? index,
+            };
+        })
+        .sort((left, right) =>
+            left.effectiveSortOrder - right.effectiveSortOrder ||
+            left.index - right.index,
+        )
+        .map(item => item.category);
 }
 
 function ensureKnownProductCategories(categories: Category[], products: CatalogProduct[]) {
@@ -340,9 +676,9 @@ function ensureKnownProductCategories(categories: Category[], products: CatalogP
     let hasUncategorizedProduct = false;
 
     const normalizedProducts = products.map(product => {
-        const nextCategoryId = normalizeCategoryText(product.categoryId) || 'uncategorized';
+        const nextCategoryId = normalizeCategoryText(product.categoryId) || UNCATEGORIZED_CATEGORY_ID;
 
-        if (nextCategoryId === 'uncategorized') {
+        if (nextCategoryId === UNCATEGORIZED_CATEGORY_ID) {
             hasUncategorizedProduct = true;
         } else if (!knownCategoryMap.has(nextCategoryId)) {
             knownCategoryMap.set(nextCategoryId, {
@@ -359,9 +695,9 @@ function ensureKnownProductCategories(categories: Category[], products: CatalogP
         };
     });
 
-    if (hasUncategorizedProduct && !knownCategoryMap.has('uncategorized')) {
-        knownCategoryMap.set('uncategorized', {
-            id: 'uncategorized',
+    if (hasUncategorizedProduct && !knownCategoryMap.has(UNCATEGORIZED_CATEGORY_ID)) {
+        knownCategoryMap.set(UNCATEGORIZED_CATEGORY_ID, {
+            id: UNCATEGORIZED_CATEGORY_ID,
             name: 'Sin categoria',
         });
     }
@@ -372,7 +708,7 @@ function ensureKnownProductCategories(categories: Category[], products: CatalogP
     } satisfies CatalogData;
 }
 
-function applyLocalCategoryOverrides(data: CatalogData, brand: 'natura' | 'nikken'): CatalogData {
+function applyBrandLocalCategoryOverrides(data: CatalogData, brand: BrandKey): CatalogData {
     if (!canUseBrowserStorage()) {
         return ensureKnownProductCategories(
             data.categories.map(category => ({ ...category })),
@@ -381,23 +717,60 @@ function applyLocalCategoryOverrides(data: CatalogData, brand: 'natura' | 'nikke
     }
 
     try {
-        const categoryOverrides = readLocalCategoryOverrides(brand);
-        const deletedCategoryIds = new Set(categoryOverrides.deletedCategoryIds);
-        const categoryMap = new Map(
-            data.categories
-                .filter(category => !deletedCategoryIds.has(category.id))
-                .map(category => [category.id, { ...category }]),
-        );
+        const canonicalStorageKey = getLocalCategoryStorageKey(brand);
+        const categoryOverrides = readStoredLocalCategoryOverrides(brand);
+        const presentationById = new Map<string, CategoryPresentationState>();
+        let mergedCategories = data.categories.map(category => ({ ...category }));
 
-        categoryOverrides.categories.forEach(category => {
-            categoryMap.set(category.id, { ...category });
-            deletedCategoryIds.delete(category.id);
+        getOrderedLocalCategoryStorageKeys(brand).forEach(storageKey => {
+            const parsedSnapshot = parseLocalCategorySnapshot(
+                safeParseJson<unknown>(localStorage.getItem(storageKey), null),
+            );
+
+            if (storageKey !== canonicalStorageKey) {
+                mergedCategories = applyStoredLocalCategoryOverrides(
+                    mergedCategories,
+                    parsedSnapshot.overrides,
+                ).map(category => ({ ...category }));
+            }
+
+            parsedSnapshot.presentationById.forEach((state, categoryId) => {
+                mergeCategoryPresentationState(presentationById, categoryId, state);
+            });
         });
 
+        mergedCategories = applyStoredLocalCategoryOverrides(
+            mergedCategories,
+            categoryOverrides,
+        ).map(category => ({ ...category }));
+
+        const blockedCategoryIds = new Set<string>(
+            Array.from(presentationById.entries())
+                .filter(([, state]) => state.isVisible === false)
+                .map(([categoryId]) => categoryId),
+        );
+
+        categoryOverrides.deletedCategoryIds.forEach(categoryId => {
+            blockedCategoryIds.add(categoryId);
+        });
+
+        const visibleCategories = sortCategoriesByPresentation(
+            mergedCategories
+                .map(category => {
+                    const presentation = presentationById.get(category.id);
+
+                    return presentation?.name
+                        ? { ...category, name: presentation.name }
+                        : { ...category };
+                })
+                .filter(category => presentationById.get(category.id)?.isVisible !== false),
+            presentationById,
+        );
+
         const normalizedProducts = data.products.map(product => {
-            const currentCategoryId = normalizeCategoryText(product.categoryId) || 'uncategorized';
-            const nextCategoryId = deletedCategoryIds.has(currentCategoryId)
-                ? 'uncategorized'
+            const currentCategoryId = normalizeCategoryText(product.categoryId) || UNCATEGORIZED_CATEGORY_ID;
+            const nextCategoryId = blockedCategoryIds.has(currentCategoryId)
+                ? UNCATEGORIZED_CATEGORY_ID
                 : currentCategoryId;
 
             return {
@@ -408,7 +781,7 @@ function applyLocalCategoryOverrides(data: CatalogData, brand: 'natura' | 'nikke
             };
         });
 
-        return ensureKnownProductCategories(Array.from(categoryMap.values()), normalizedProducts);
+        return ensureKnownProductCategories(visibleCategories, normalizedProducts);
     } catch (error) {
         console.error(`Error applying local category overrides for ${brand}:`, error);
         return ensureKnownProductCategories(
@@ -418,7 +791,7 @@ function applyLocalCategoryOverrides(data: CatalogData, brand: 'natura' | 'nikke
     }
 }
 
-function applyBrandLocalOverrides(data: CatalogData, brand: 'natura' | 'nikken'): CatalogData {
+function applyBrandLocalOverrides(data: CatalogData, brand: BrandKey): CatalogData {
     if (typeof window === 'undefined') {
         return ensureKnownProductCategories(
             data.categories.map(category => ({ ...category })),
@@ -436,7 +809,7 @@ function applyBrandLocalOverrides(data: CatalogData, brand: 'natura' | 'nikken')
                 deliveryMethods: [...product.deliveryMethods],
             }));
 
-        return applyLocalCategoryOverrides({
+        return applyBrandLocalCategoryOverrides({
             categories: data.categories.map(category => ({ ...category })),
             products: nextProducts,
         }, brand);
