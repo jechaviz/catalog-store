@@ -8,6 +8,7 @@ import { Footer } from '@/components/app/layout/Footer';
 import { useCart } from '@/hooks/useCart';
 import { useTheme } from '@/hooks/useTheme';
 import { Loader2 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
 import { useLocation } from 'wouter';
 import {
@@ -42,6 +43,7 @@ export default function Home() {
   const [, setLocation] = useLocation();
 
   // Custom Hooks
+  const { user } = useAuth();
   const { theme } = useTheme();
   const { brand, isNikken } = useBrand();
   const cart = useCart();
@@ -222,10 +224,10 @@ export default function Home() {
               cart.addItem(product, 1);
               setSelectedProduct(null); // Close the detail view to show cart
             }}
-            isLiked={selectedProduct ? readBrandLikeIds(brand).includes(selectedProduct.id) : false}
+            isLiked={selectedProduct ? readBrandLikeIds(brand, user?.id).includes(selectedProduct.id) : false}
             onToggleLike={() => {
               if (selectedProduct) {
-                toggleBrandLikeId(brand, selectedProduct.id);
+                toggleBrandLikeId(brand, selectedProduct.id, user?.id);
                 // Force re-render of detail view
                 setSelectedProduct({ ...selectedProduct });
               }

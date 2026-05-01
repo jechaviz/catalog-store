@@ -6,11 +6,12 @@ import { Footer } from '@/components/app/layout/Footer';
 import { ProductCard } from '@/components/domain/product/ProductCard';
 import { Button } from '@/components/shared/ui/button';
 import { Card, CardContent } from '@/components/shared/ui/card';
+import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
 import { useCart } from '@/hooks/useCart';
 import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import { fetchCatalogData, type CatalogData, type CatalogProduct } from '@/lib/dataFetcher';
-import { readBrandLikeIds, toggleBrandLikeId } from '@/lib/storefrontStorage';
+import { isLikesStorageKeyForBrand, readBrandLikeIds, toggleBrandLikeId } from '@/lib/storefrontStorage';
 
 const ProductDetail = lazy(() =>
   import('@/components/domain/product/ProductDetail').then((module) => ({
@@ -31,6 +32,7 @@ const ContactFormModal = lazy(() =>
 );
 
 export default function Favorites() {
+  const { user } = useAuth();
   const { brand, isNikken } = useBrand();
   const storefrontSettings = useStorefrontSettings(brand);
   const cart = useCart();
@@ -47,21 +49,36 @@ export default function Favorites() {
   const homePath = isNikken ? '/nikken' : '/';
   const accountBasePath = isNikken ? '/nikken/account' : '/account';
   const checkoutPath = isNikken ? '/nikken/checkout' : '/checkout';
+  const userId = user?.id ?? null;
 
   useEffect(() => {
     const syncFavoriteIds = () => {
-      setFavoriteIds(readBrandLikeIds(brand));
+      setFavoriteIds(readBrandLikeIds(brand, userId));
+    };
+
+    const handleLikesChanged = (event: Event) => {
+      const storageKey = (event as CustomEvent<{ storageKey?: string }>).detail?.storageKey;
+
+      if (!storageKey || isLikesStorageKeyForBrand(storageKey, brand)) {
+        syncFavoriteIds();
+      }
+    };
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (!event.key || isLikesStorageKeyForBrand(event.key, brand)) {
+        syncFavoriteIds();
+      }
     };
 
     syncFavoriteIds();
-    window.addEventListener('catalog-likes-changed', syncFavoriteIds);
-    window.addEventListener('storage', syncFavoriteIds);
+    window.addEventListener('catalog-likes-changed', handleLikesChanged as EventListener);
+    window.addEventListener('storage', handleStorageChange);
 
     return () => {
-      window.removeEventListener('catalog-likes-changed', syncFavoriteIds);
-      window.removeEventListener('storage', syncFavoriteIds);
+      window.removeEventListener('catalog-likes-changed', handleLikesChanged as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
     };
-  }, [brand]);
+  }, [brand, userId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -319,9 +336,9 @@ export default function Favorites() {
               cart.addItem(product, 1);
               setSelectedProduct(null);
             }}
-            isLiked={readBrandLikeIds(brand).includes(selectedProduct.id)}
+            isLiked={readBrandLikeIds(brand, userId).includes(selectedProduct.id)}
             onToggleLike={() => {
-              toggleBrandLikeId(brand, selectedProduct.id);
+              toggleBrandLikeId(brand, selectedProduct.id, userId);
               setSelectedProduct({ ...selectedProduct });
             }}
           />

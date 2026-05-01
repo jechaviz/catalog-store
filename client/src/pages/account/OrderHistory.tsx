@@ -2,18 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { Navbar } from '@/components/app/layout/Navbar';
 import { Footer } from '@/components/app/layout/Footer';
 import { useBrand } from '@/contexts/BrandContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Package, Search, Calendar, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/shared/ui/button';
 import { Card, CardContent } from '@/components/shared/ui/card';
 import { Input } from '@/components/shared/ui/input';
 import { Link } from 'wouter';
 import {
+  isOrdersStorageKeyForBrand,
   getOrderStatusClasses,
   getOrderStatusLabel,
   getPaymentMethodLabel,
   listOrdersByBrand,
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
+
+const AUTH_STORAGE_KEYS = new Set(['odoo_session', 'odoo_mock_user']);
 
 const orderDateFormatter = new Intl.DateTimeFormat('es-MX', {
   day: 'numeric',
@@ -47,6 +51,7 @@ function getItemsCountLabel(items: StoredOrderRecord['items']) {
 
 export default function OrderHistory() {
   const { brand, isNikken } = useBrand();
+  const { user } = useAuth();
   const [orders, setOrders] = useState<StoredOrderRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -57,7 +62,7 @@ export default function OrderHistory() {
 
   useEffect(() => {
     const loadOrders = () => {
-      const nextOrders = [...listOrdersByBrand(brand)].sort((left, right) =>
+      const nextOrders = [...listOrdersByBrand(brand, user?.id)].sort((left, right) =>
         right.createdAt.localeCompare(left.createdAt)
       );
 
@@ -65,22 +70,34 @@ export default function OrderHistory() {
     };
 
     const handleOrdersChanged = (event: Event) => {
-      const detailBrand = (event as CustomEvent<{ brand?: string }>).detail?.brand;
+      const detail = (event as CustomEvent<{ brand?: string; scopeId?: string }>).detail;
+      const detailBrand = detail?.brand;
 
       if (!detailBrand || detailBrand === brand) {
         loadOrders();
       }
     };
 
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key) {
+        loadOrders();
+        return;
+      }
+
+      if (AUTH_STORAGE_KEYS.has(event.key) || isOrdersStorageKeyForBrand(event.key, brand)) {
+        loadOrders();
+      }
+    };
+
     loadOrders();
     window.addEventListener('catalog-orders-changed', handleOrdersChanged as EventListener);
-    window.addEventListener('storage', loadOrders);
+    window.addEventListener('storage', handleStorage);
 
     return () => {
       window.removeEventListener('catalog-orders-changed', handleOrdersChanged as EventListener);
-      window.removeEventListener('storage', loadOrders);
+      window.removeEventListener('storage', handleStorage);
     };
-  }, [brand]);
+  }, [brand, user?.id]);
 
   const filteredOrders = orders.filter(order => order.id.toLowerCase().includes(normalizedSearch));
   const hasOrders = orders.length > 0;

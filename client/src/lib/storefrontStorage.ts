@@ -1,6 +1,14 @@
 import type { Brand } from '@/contexts/BrandContext';
 import type { CatalogProduct } from '@/lib/dataFetcher';
+import {
+  buildScopedBrandStorageKey,
+  getLegacyBrandStorageKey,
+  hasUserScope,
+  isStorageKeyForBrandPrefix,
+} from '@/lib/storageScope';
 
+const CART_STORAGE_PREFIX = 'catalog_cart';
+const LIKES_STORAGE_PREFIX = 'catalog_likes';
 const LEGACY_NATURA_CART_KEY = 'natura_cart';
 const LEGACY_NATURA_LIKES_KEY = 'natura_likes';
 
@@ -25,12 +33,34 @@ function safeParseJson<T>(rawValue: string | null, fallbackValue: T): T {
   }
 }
 
-export function getCartStorageKey(brand: Brand) {
-  return `catalog_cart_${brand}`;
+export function getCartStorageKey(brand: Brand, userId?: string | null) {
+  return buildScopedBrandStorageKey(CART_STORAGE_PREFIX, brand, userId);
 }
 
-export function getLikesStorageKey(brand: Brand) {
-  return `catalog_likes_${brand}`;
+export function getLikesStorageKey(brand: Brand, userId?: string | null) {
+  return buildScopedBrandStorageKey(LIKES_STORAGE_PREFIX, brand, userId);
+}
+
+export function getLegacyBrandCartStorageKey(brand: Brand) {
+  return getLegacyBrandStorageKey(CART_STORAGE_PREFIX, brand);
+}
+
+export function getLegacyBrandLikesStorageKey(brand: Brand) {
+  return getLegacyBrandStorageKey(LIKES_STORAGE_PREFIX, brand);
+}
+
+export function isLikesStorageKeyForBrand(key: string | null | undefined, brand: Brand) {
+  return (
+    isStorageKeyForBrandPrefix(key, LIKES_STORAGE_PREFIX, brand) ||
+    (brand === 'natura' && key === LEGACY_NATURA_LIKES_KEY)
+  );
+}
+
+export function isCartStorageKeyForBrand(key: string | null | undefined, brand: Brand) {
+  return (
+    isStorageKeyForBrandPrefix(key, CART_STORAGE_PREFIX, brand) ||
+    (brand === 'natura' && key === LEGACY_NATURA_CART_KEY)
+  );
 }
 
 export function getLegacyCartStorageKey() {
@@ -61,23 +91,40 @@ export function writeStoredIds(storageKey: string, ids: string[]) {
   window.dispatchEvent(new CustomEvent('catalog-likes-changed', { detail: { storageKey } }));
 }
 
-export function readBrandLikeIds(brand: Brand) {
-  const storageKey = getLikesStorageKey(brand);
+function hydrateGuestLikesFromLegacy(brand: Brand) {
+  const guestStorageKey = getLikesStorageKey(brand);
+  const legacyScopedKey = getLegacyBrandLikesStorageKey(brand);
+  const legacyScopedIds = readStoredIds(legacyScopedKey);
+
+  if (legacyScopedIds.length > 0 || localStorage.getItem(legacyScopedKey)) {
+    writeStoredIds(guestStorageKey, legacyScopedIds);
+    return legacyScopedIds;
+  }
+
+  if (brand === 'natura') {
+    const legacyIds = readStoredIds(getLegacyLikesStorageKey());
+    if (legacyIds.length > 0) {
+      writeStoredIds(guestStorageKey, legacyIds);
+    }
+    return legacyIds;
+  }
+
+  return [];
+}
+
+export function readBrandLikeIds(brand: Brand, userId?: string | null) {
+  const storageKey = getLikesStorageKey(brand, userId);
   const scopedIds = readStoredIds(storageKey);
 
   if (scopedIds.length > 0 || localStorage.getItem(storageKey)) {
     return scopedIds;
   }
 
-  if (brand === 'natura') {
-    const legacyIds = readStoredIds(getLegacyLikesStorageKey());
-    if (legacyIds.length > 0) {
-      writeStoredIds(storageKey, legacyIds);
-    }
-    return legacyIds;
+  if (hasUserScope(userId)) {
+    return [];
   }
 
-  return [];
+  return hydrateGuestLikesFromLegacy(brand);
 }
 
 export function toggleStoredId(storageKey: string, id: string) {
@@ -90,14 +137,11 @@ export function toggleStoredId(storageKey: string, id: string) {
   return nextIds;
 }
 
-export function toggleBrandLikeId(brand: Brand, id: string) {
-  const storageKey = getLikesStorageKey(brand);
+export function toggleBrandLikeId(brand: Brand, id: string, userId?: string | null) {
+  const storageKey = getLikesStorageKey(brand, userId);
 
-  if (brand === 'natura' && !localStorage.getItem(storageKey)) {
-    const legacyIds = readStoredIds(getLegacyLikesStorageKey());
-    if (legacyIds.length > 0) {
-      writeStoredIds(storageKey, legacyIds);
-    }
+  if (!hasUserScope(userId) && !localStorage.getItem(storageKey)) {
+    hydrateGuestLikesFromLegacy(brand);
   }
 
   return toggleStoredId(storageKey, id);

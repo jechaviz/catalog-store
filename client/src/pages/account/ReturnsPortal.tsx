@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'wouter';
 import { Navbar } from '@/components/app/layout/Navbar';
 import { Footer } from '@/components/app/layout/Footer';
 import { useBrand } from '@/contexts/BrandContext';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   ArrowLeft,
   RotateCcw,
@@ -16,18 +17,70 @@ import { Button } from '@/components/shared/ui/button';
 import { Card, CardContent } from '@/components/shared/ui/card';
 import { Input } from '@/components/shared/ui/input';
 import { Textarea } from '@/components/shared/ui/textarea';
-import { listOrdersByBrand } from '@/lib/orderStorage';
+import {
+  isOrdersStorageKeyForBrand,
+  listOrdersByBrand,
+  type StoredOrderRecord,
+} from '@/lib/orderStorage';
+
+const AUTH_STORAGE_KEYS = new Set(['odoo_session', 'odoo_mock_user']);
 
 export default function ReturnsPortal() {
   const { brand } = useBrand();
+  const { user } = useAuth();
   const isNikken = brand === 'nikken';
-  const storedOrders = useMemo(() => listOrdersByBrand(brand), [brand]);
-  const latestOrder = storedOrders[0];
+  const [storedOrders, setStoredOrders] = useState<StoredOrderRecord[]>([]);
 
   const [submitted, setSubmitted] = useState(false);
-  const [orderId, setOrderId] = useState(latestOrder?.id || '');
+  const [orderId, setOrderId] = useState('');
   const [reason, setReason] = useState('Defecto de fabrica');
   const [description, setDescription] = useState('');
+
+  useEffect(() => {
+    const loadOrders = () => {
+      setStoredOrders(listOrdersByBrand(brand, user?.id));
+    };
+
+    const handleOrdersChanged = (event: Event) => {
+      const detailBrand = (event as CustomEvent<{ brand?: string }>).detail?.brand;
+
+      if (!detailBrand || detailBrand === brand) {
+        loadOrders();
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key) {
+        loadOrders();
+        return;
+      }
+
+      if (AUTH_STORAGE_KEYS.has(event.key) || isOrdersStorageKeyForBrand(event.key, brand)) {
+        loadOrders();
+      }
+    };
+
+    loadOrders();
+    window.addEventListener('catalog-orders-changed', handleOrdersChanged as EventListener);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('catalog-orders-changed', handleOrdersChanged as EventListener);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [brand, user?.id]);
+
+  useEffect(() => {
+    if (!storedOrders.length) {
+      return;
+    }
+
+    const hasMatchingOrder = storedOrders.some(order => order.id === orderId);
+
+    if (!orderId || !hasMatchingOrder) {
+      setOrderId(storedOrders[0].id);
+    }
+  }, [storedOrders, orderId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,9 +1,12 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import type { CatalogProduct } from '@/lib/dataFetcher';
 import { useBrand } from '@/contexts/BrandContext';
+import { useAuth } from '@/contexts/AuthContext';
 import {
     getCartStorageKey,
+    getLegacyBrandCartStorageKey,
     getLegacyCartStorageKey,
+    isCartStorageKeyForBrand,
     readStoredCartItems,
 } from '@/lib/storefrontStorage';
 
@@ -28,37 +31,120 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
     const { brand } = useBrand();
+    const { user } = useAuth();
     const [items, setItems] = useState<CartItem[]>([]);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [peekTimeout, setPeekTimeout] = useState<NodeJS.Timeout | null>(null);
-    const storageKey = getCartStorageKey(brand);
+    const [peekTimeout, setPeekTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+    const userId = user?.id ?? null;
+    const storageKey = getCartStorageKey(brand, userId);
     const hydratedStorageKeyRef = useRef<string | null>(null);
 
     useEffect(() => {
-        try {
-            const currentBrandItems = readStoredCartItems(storageKey, brand);
-            if (currentBrandItems.length > 0 || localStorage.getItem(storageKey)) {
-                setItems(currentBrandItems);
-            } else {
-                const legacyItems = readStoredCartItems(getLegacyCartStorageKey(), brand);
-                setItems(legacyItems);
+        const readCartSnapshot = (key: string) => {
+            const storedItems = readStoredCartItems(key, brand);
+            return {
+                hasStoredValue: localStorage.getItem(key) !== null,
+                items: storedItems,
+            };
+        };
 
-                if (legacyItems.length > 0) {
-                    localStorage.setItem(storageKey, JSON.stringify(legacyItems));
+        const mergeCartItems = (baseItems: CartItem[], extraItems: CartItem[]) => {
+            const mergedItems = [...baseItems];
+
+            extraItems.forEach(extraItem => {
+                const existingIndex = mergedItems.findIndex(item => item.product.id === extraItem.product.id);
+
+                if (existingIndex >= 0) {
+                    mergedItems[existingIndex] = {
+                        ...mergedItems[existingIndex],
+                        quantity: mergedItems[existingIndex].quantity + extraItem.quantity,
+                    };
+                    return;
                 }
+
+                mergedItems.push(extraItem);
+            });
+
+            return mergedItems;
+        };
+
+        try {
+            const activeSnapshot = readCartSnapshot(storageKey);
+
+            if (activeSnapshot.hasStoredValue) {
+                setItems(activeSnapshot.items);
+                hydratedStorageKeyRef.current = storageKey;
+                return;
+            }
+
+            const guestStorageKey = getCartStorageKey(brand);
+            const guestSnapshot = guestStorageKey === storageKey ? activeSnapshot : readCartSnapshot(guestStorageKey);
+            const legacyBrandKey = getLegacyBrandCartStorageKey(brand);
+            const legacyBrandSnapshot = readCartSnapshot(legacyBrandKey);
+            const naturaLegacySnapshot = brand === 'natura'
+                ? readCartSnapshot(getLegacyCartStorageKey())
+                : { hasStoredValue: false, items: [] as CartItem[] };
+
+            let nextItems: CartItem[] = [];
+
+            if (userId) {
+                if (guestSnapshot.hasStoredValue) {
+                    nextItems = mergeCartItems(nextItems, guestSnapshot.items);
+                }
+
+                if (legacyBrandSnapshot.hasStoredValue) {
+                    nextItems = mergeCartItems(nextItems, legacyBrandSnapshot.items);
+                }
+
+                if (naturaLegacySnapshot.hasStoredValue) {
+                    nextItems = mergeCartItems(nextItems, naturaLegacySnapshot.items);
+                }
+            } else if (guestSnapshot.hasStoredValue) {
+                nextItems = guestSnapshot.items;
+            } else if (legacyBrandSnapshot.hasStoredValue) {
+                nextItems = legacyBrandSnapshot.items;
+            } else if (naturaLegacySnapshot.hasStoredValue) {
+                nextItems = naturaLegacySnapshot.items;
+            }
+
+            setItems(nextItems);
+
+            if (nextItems.length > 0 || userId || legacyBrandSnapshot.hasStoredValue || naturaLegacySnapshot.hasStoredValue) {
+                localStorage.setItem(storageKey, JSON.stringify(nextItems));
             }
         } catch (e) {
             console.error('Failed to parse cart from local storage', e);
             setItems([]);
         }
         hydratedStorageKeyRef.current = storageKey;
-    }, [brand, storageKey]);
+    }, [brand, storageKey, userId]);
 
     useEffect(() => {
         if (hydratedStorageKeyRef.current === storageKey) {
             localStorage.setItem(storageKey, JSON.stringify(items));
         }
     }, [items, storageKey]);
+
+    useEffect(() => {
+        const handleStorageChange = (event: StorageEvent) => {
+            if (!isCartStorageKeyForBrand(event.key, brand)) {
+                return;
+            }
+
+            try {
+                setItems(readStoredCartItems(storageKey, brand));
+                hydratedStorageKeyRef.current = storageKey;
+            } catch (e) {
+                console.error('Failed to sync cart from local storage', e);
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, [brand, storageKey]);
 
     useEffect(() => {
         return () => {

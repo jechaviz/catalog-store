@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navbar } from '@/components/app/layout/Navbar';
 import { Footer } from '@/components/app/layout/Footer';
 import { Button } from '@/components/shared/ui/button';
 import { Card, CardContent } from '@/components/shared/ui/card';
 import { useBrand } from '@/contexts/BrandContext';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   getCarrierLabel,
   getEstimatedDeliveryLabel,
@@ -11,6 +12,8 @@ import {
   getOrderStatusClasses,
   getOrderStatusLabel,
   getTrackingTimeline,
+  isOrdersStorageKeyForBrand,
+  type StoredOrderRecord,
 } from '@/lib/orderStorage';
 import {
   ArrowLeft,
@@ -21,6 +24,8 @@ import {
   Truck,
 } from 'lucide-react';
 import { Link, useParams } from 'wouter';
+
+const AUTH_STORAGE_KEYS = new Set(['odoo_session', 'odoo_mock_user']);
 
 function formatOrderDate(value: string) {
   const parsedDate = new Date(value);
@@ -45,12 +50,52 @@ function formatCurrency(value: number) {
 
 export default function OrderTracking() {
   const { brand } = useBrand();
+  const { user } = useAuth();
   const { id } = useParams();
   const isNikkenRoute =
     typeof window !== 'undefined' && window.location.pathname.startsWith('/nikken');
   const activeBrand = isNikkenRoute ? 'nikken' : brand;
   const isNikken = activeBrand === 'nikken';
-  const order = typeof window === 'undefined' ? null : getOrderById(activeBrand, id);
+  const [order, setOrder] = useState<StoredOrderRecord | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const loadOrder = () => {
+      setOrder(getOrderById(activeBrand, id, user?.id));
+    };
+
+    const handleOrdersChanged = (event: Event) => {
+      const detailBrand = (event as CustomEvent<{ brand?: string }>).detail?.brand;
+
+      if (!detailBrand || detailBrand === activeBrand) {
+        loadOrder();
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key) {
+        loadOrder();
+        return;
+      }
+
+      if (AUTH_STORAGE_KEYS.has(event.key) || isOrdersStorageKeyForBrand(event.key, activeBrand)) {
+        loadOrder();
+      }
+    };
+
+    loadOrder();
+    window.addEventListener('catalog-orders-changed', handleOrdersChanged as EventListener);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('catalog-orders-changed', handleOrdersChanged as EventListener);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [activeBrand, id, user?.id]);
+
   const timeline = order ? getTrackingTimeline(order) : [];
   const historyHref = `/${isNikken ? 'nikken/' : ''}account/orders`;
   const itemCount = order

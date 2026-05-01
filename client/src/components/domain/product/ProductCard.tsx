@@ -3,6 +3,7 @@ import { Button } from '@/components/shared/ui/button';
 import { Card } from '@/components/shared/ui/card';
 import type { CatalogProduct } from '@/lib/dataFetcher';
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
 import {
     getProductFallbackImage,
@@ -19,11 +20,12 @@ interface ProductCardProps {
 
 export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: ProductCardProps) {
     const [isLiked, setIsLiked] = useState(false);
+    const { user } = useAuth();
     const { brand } = useBrand();
 
     useEffect(() => {
         const syncLikedState = () => {
-            const likedItems = readBrandLikeIds(brand);
+            const likedItems = readBrandLikeIds(brand, user?.id);
             setIsLiked(likedItems.includes(product.id));
         };
 
@@ -33,10 +35,10 @@ export function ProductCard({ product, onViewDetail, onQuickBuy, onAddToCart }: 
         return () => {
             window.removeEventListener('catalog-likes-changed', syncLikedState);
         };
-    }, [brand, product.id]);
+    }, [brand, product.id, user?.id]);
 
     const toggleLike = () => {
-        const newLikes = toggleBrandLikeId(brand, product.id);
+        const newLikes = toggleBrandLikeId(brand, product.id, user?.id);
         setIsLiked(newLikes.includes(product.id));
     };
 

@@ -16,8 +16,9 @@ import { useBrand } from '@/contexts/BrandContext';
 import {
   getOrderStatusClasses,
   getOrderStatusLabel,
-  getOrdersStorageKey,
-  listOrdersByBrand,
+  isOrdersStorageKeyForBrand,
+  listAllOrdersByBrand,
+  listOrderStorageKeysForBrand,
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
 
@@ -194,25 +195,35 @@ function getActivityDetails(order: StoredOrderRecord): Omit<DashboardActivity, '
 export default function AdminDashboard() {
   const { brand } = useBrand();
   const [orders, setOrders] = useState<StoredOrderRecord[]>([]);
+  const [orderScopeCount, setOrderScopeCount] = useState(0);
 
   useEffect(() => {
     const syncOrders = () => {
-      const nextOrders = listOrdersByBrand(brand).sort((left, right) =>
+      const nextOrders = listAllOrdersByBrand(brand).sort((left, right) =>
         right.createdAt.localeCompare(left.createdAt),
       );
+      const nextScopeCount = listOrderStorageKeysForBrand(brand).filter(storageKey =>
+        Boolean(localStorage.getItem(storageKey)) && isOrdersStorageKeyForBrand(storageKey, brand),
+      ).length;
+
       setOrders(nextOrders);
+      setOrderScopeCount(nextScopeCount);
     };
 
     const handleOrdersChanged = (event: Event) => {
-      const { detail } = event as CustomEvent<{ brand?: string }>;
+      const { detail } = event as CustomEvent<{ brand?: string; storageKey?: string }>;
 
-      if (!detail?.brand || detail.brand === brand) {
+      if (
+        !detail?.brand ||
+        detail.brand === brand ||
+        isOrdersStorageKeyForBrand(detail.storageKey, brand)
+      ) {
         syncOrders();
       }
     };
 
     const handleStorage = (event: StorageEvent) => {
-      if (!event.key || event.key === getOrdersStorageKey(brand)) {
+      if (!event.key || isOrdersStorageKeyForBrand(event.key, brand)) {
         syncOrders();
       }
     };
@@ -280,7 +291,8 @@ export default function AdminDashboard() {
           <div>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Panel de Control</h1>
             <p className="text-slate-500 mt-1">
-              Aqui tienes un resumen actualizado de los pedidos locales de {brandLabel(brand)}.
+              Aqui tienes un resumen actualizado de los pedidos locales de {brandLabel(brand)}
+              {orderScopeCount > 0 ? ` en ${orderScopeCount} ${orderScopeCount === 1 ? 'scope' : 'scopes'}` : ''}.
             </p>
           </div>
           <div className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 shadow-sm">

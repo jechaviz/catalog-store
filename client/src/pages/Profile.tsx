@@ -74,10 +74,12 @@ export default function Profile() {
       return;
     }
 
+    const userId = user.id;
+
     const loadOrders = () => {
       setLoadingOrders(true);
 
-      const nextOrders = listOrdersByBrand(brand)
+      const nextOrders = listOrdersByBrand(brand, userId)
         .slice()
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 
@@ -87,7 +89,17 @@ export default function Profile() {
 
     loadOrders();
 
-    const handleOrdersChanged = () => {
+    const handleOrdersChanged = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+
+      if (detail?.brand && detail.brand !== brand) {
+        return;
+      }
+
+      if (detail?.scopeId && detail.scopeId !== userId) {
+        return;
+      }
+
       loadOrders();
     };
 

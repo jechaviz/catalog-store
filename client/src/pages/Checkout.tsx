@@ -28,6 +28,7 @@ export default function Checkout() {
     const { brand, isNikken } = useBrand();
     const storefrontSettings = useStorefrontSettings(brand);
     const hadItemsOnLoad = useRef(items.length > 0);
+    const userId = user?.id ?? null;
 
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
@@ -144,7 +145,7 @@ export default function Checkout() {
                 items: mapCartItemsToOrderItems(items),
                 carrier: paymentMethod === 'whatsapp_cash' ? 'Confirmacion por WhatsApp' : 'Mensajeria por asignar',
                 trackingNumber: odooOrder?.name ? String(odooOrder.name) : undefined,
-            });
+            }, userId);
 
             clearCart();
             setLocation(isNikken ? `/nikken/account/tracking/${orderId}` : `/account/tracking/${orderId}`);
@@ -170,7 +171,7 @@ export default function Checkout() {
                 customerAddress,
                 items: mapCartItemsToOrderItems(items),
                 carrier: 'Confirmacion por WhatsApp',
-            });
+            }, userId);
 
             clearCart();
             setLocation(isNikken ? `/nikken/account/tracking/${fallbackOrderId}` : `/account/tracking/${fallbackOrderId}`);

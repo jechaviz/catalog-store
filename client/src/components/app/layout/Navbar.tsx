@@ -17,8 +17,7 @@ import { useBrand } from '@/contexts/BrandContext';
 import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import type { Category, CatalogProduct } from '@/lib/dataFetcher';
 import {
-  getLegacyLikesStorageKey,
-  getLikesStorageKey,
+  isLikesStorageKeyForBrand,
   readBrandLikeIds,
 } from '@/lib/storefrontStorage';
 import {
@@ -59,11 +58,12 @@ export function Navbar({
   const favoritesPath = isNikken ? '/nikken/account/favorites' : '/account/favorites';
   const mobileSearchInputId = `${brand}-navbar-mobile-search`;
   const isAdmin = user?.role === 'admin';
+  const userId = user?.id ?? null;
 
   useEffect(() => {
     const syncFavoriteCount = () => {
       try {
-        setFavoriteCount(readBrandLikeIds(brand).length);
+        setFavoriteCount(readBrandLikeIds(brand, userId).length);
       } catch {
         setFavoriteCount(0);
       }
@@ -71,19 +71,14 @@ export function Navbar({
 
     const handleLikesChanged = (event: Event) => {
       const storageKey = (event as CustomEvent<{ storageKey?: string }>).detail?.storageKey;
-      const scopedStorageKey = getLikesStorageKey(brand);
-      const legacyStorageKey = brand === 'natura' ? getLegacyLikesStorageKey() : null;
 
-      if (!storageKey || storageKey === scopedStorageKey || storageKey === legacyStorageKey) {
+      if (!storageKey || isLikesStorageKeyForBrand(storageKey, brand)) {
         syncFavoriteCount();
       }
     };
 
     const handleStorageChange = (event: StorageEvent) => {
-      const scopedStorageKey = getLikesStorageKey(brand);
-      const legacyStorageKey = brand === 'natura' ? getLegacyLikesStorageKey() : null;
-
-      if (!event.key || event.key === scopedStorageKey || event.key === legacyStorageKey) {
+      if (!event.key || isLikesStorageKeyForBrand(event.key, brand)) {
         syncFavoriteCount();
       }
     };
@@ -96,7 +91,7 @@ export function Navbar({
       window.removeEventListener('catalog-likes-changed', handleLikesChanged as EventListener);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [brand]);
+  }, [brand, userId]);
 
   const handleLogout = () => {
     logout();
