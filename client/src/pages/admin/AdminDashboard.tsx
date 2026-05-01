@@ -62,23 +62,39 @@ type LocalCatalogStatus = {
 };
 
 type LocalCategoryStatus = {
-  touchedCategoriesCount: number;
   localCategoriesCount: number;
-  deletedCategoriesCount: number;
+  visibleLocalCategoriesCount: number;
+  hiddenCategoriesCount: number;
+  reorderedCategoriesCount: number;
+  renamedCategoriesCount: number;
   uncategorizedProductsCount: number;
+  movedToUncategorizedProductsCount: number;
 };
 
 type StoredLocalCategory = {
   id: string;
   name: string;
+  order: number | null;
+  isVisible: boolean | null;
 };
 
 type StoredLocalCategoryOverrides = {
   categories: StoredLocalCategory[];
-  deletedCategoryIds: string[];
+  hiddenCategoryIds: string[];
+  orderedCategoryIds: string[];
+  renamedCategoryIds: string[];
 };
 
-const LOCAL_CATEGORY_STORAGE_PREFIXES = ['catalog_local_categories', 'catalog_local_category'] as const;
+const LOCAL_CATEGORY_EVENT_NAMES = [
+  'catalog-local-categories-changed',
+  'catalog-local-category-changed',
+] as const;
+const LOCAL_CATEGORY_STORAGE_PREFIXES = [
+  'catalog-local-categories:',
+  'catalog_local_category_',
+  'catalog_local_category_overrides_',
+  'catalog_local_categories_',
+] as const;
 
 function formatCurrency(value: number) {
   return currencyFormatter.format(value || 0);
@@ -90,6 +106,10 @@ function capitalize(text: string) {
 
 function formatHeaderDate(date: Date) {
   return capitalize(headerDateFormatter.format(date));
+}
+
+function pluralize(value: number, singular: string, plural = `${singular}s`) {
+  return value === 1 ? singular : plural;
 }
 
 function parseStoredDate(rawDate: string) {
@@ -145,7 +165,71 @@ function isBetweenDates(date: Date | null, start: Date, end: Date) {
 }
 
 function normalizeStorageText(value: unknown) {
-  return typeof value === 'string' ? value.trim() : '';
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return '';
+}
+
+function normalizeStorageNumber(value: unknown) {
+  const numericValue =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function normalizeStorageBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    if (value === 1) {
+      return true;
+    }
+
+    if (value === 0) {
+      return false;
+    }
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  switch (value.trim().toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'si':
+    case 'visible':
+    case 'show':
+    case 'shown':
+    case 'active':
+    case 'enabled':
+      return true;
+    case '0':
+    case 'false':
+    case 'no':
+    case 'hidden':
+    case 'hide':
+    case 'deleted':
+    case 'inactive':
+    case 'disabled':
+    case 'archived':
+      return false;
+    default:
+      return null;
+  }
 }
 
 function safeParseStorageJson<T>(rawValue: string | null, fallbackValue: T): T {
@@ -164,52 +248,329 @@ function canUseBrowserStorage() {
   return typeof window !== 'undefined' && typeof localStorage !== 'undefined';
 }
 
+function extractStorageId(value: unknown) {
+  if (typeof value === 'string') {
+    return normalizeStorageText(value);
+  }
+
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  return (
+    normalizeStorageText(candidate.id) ||
+    normalizeStorageText(candidate.categoryId) ||
+    normalizeStorageText(candidate.key) ||
+    normalizeStorageText(candidate.value)
+  );
+}
+
+function normalizeStorageIdList(value: unknown) {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[\n,;|]+/g)
+      : [];
+
+  return Array.from(
+    new Set(
+      rawValues
+        .map((item) => extractStorageId(item))
+        .filter((item) => item.length > 0),
+    ),
+  );
+}
+
+function normalizeStorageBooleanEntries(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return [] as Array<[string, boolean]>;
+  }
+
+  return Object.entries(value as Record<string, unknown>).flatMap(([rawId, rawValue]) => {
+    const categoryId = normalizeStorageText(rawId);
+    const normalizedValue = normalizeStorageBoolean(rawValue);
+
+    return categoryId && normalizedValue !== null ? [[categoryId, normalizedValue] as [string, boolean]] : [];
+  });
+}
+
+function normalizeStorageOrderIds(value: unknown) {
+  if (Array.isArray(value) || typeof value === 'string') {
+    return normalizeStorageIdList(value);
+  }
+
+  if (!value || typeof value !== 'object') {
+    return [] as string[];
+  }
+
+  return Array.from(
+    new Set(
+      Object.entries(value as Record<string, unknown>).flatMap(([rawId, rawValue]) => {
+        const categoryId = normalizeStorageText(rawId);
+        return categoryId && normalizeStorageNumber(rawValue) !== null ? [categoryId] : [];
+      }),
+    ),
+  );
+}
+
+function normalizeLocalCategoryVisibility(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const directVisibility =
+    normalizeStorageBoolean(candidate.visible) ??
+    normalizeStorageBoolean(candidate.isVisible) ??
+    normalizeStorageBoolean(candidate.visibility);
+
+  if (directVisibility !== null) {
+    return directVisibility;
+  }
+
+  const hiddenFlag =
+    normalizeStorageBoolean(candidate.hidden) ??
+    normalizeStorageBoolean(candidate.isHidden) ??
+    normalizeStorageBoolean(candidate.deleted);
+
+  if (hiddenFlag !== null) {
+    return !hiddenFlag;
+  }
+
+  const enabledFlag =
+    normalizeStorageBoolean(candidate.active) ??
+    normalizeStorageBoolean(candidate.enabled);
+
+  if (enabledFlag !== null) {
+    return enabledFlag;
+  }
+
+  const status = normalizeStorageText(candidate.status).toLowerCase();
+
+  if (status === 'visible' || status === 'active' || status === 'enabled') {
+    return true;
+  }
+
+  if (
+    status === 'hidden' ||
+    status === 'inactive' ||
+    status === 'disabled' ||
+    status === 'archived' ||
+    status === 'deleted'
+  ) {
+    return false;
+  }
+
+  return null;
+}
+
+function normalizeLocalCategoryOrder(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  return (
+    normalizeStorageNumber(candidate.order) ??
+    normalizeStorageNumber(candidate.sortOrder) ??
+    normalizeStorageNumber(candidate.displayOrder) ??
+    normalizeStorageNumber(candidate.position) ??
+    normalizeStorageNumber(candidate.index) ??
+    normalizeStorageNumber(candidate.rank) ??
+    normalizeStorageNumber(candidate.sequence)
+  );
+}
+
 function normalizeLocalCategoryRecord(value: unknown): StoredLocalCategory | null {
   if (!value || typeof value !== 'object') {
     return null;
   }
 
-  const candidate = value as Partial<StoredLocalCategory>;
-  const id = normalizeStorageText(candidate.id);
-  const name = normalizeStorageText(candidate.name);
+  const candidate = value as Record<string, unknown>;
+  const id =
+    normalizeStorageText(candidate.id) ||
+    normalizeStorageText(candidate.categoryId) ||
+    normalizeStorageText(candidate.key);
+  const name =
+    normalizeStorageText(candidate.name) ||
+    normalizeStorageText(candidate.label) ||
+    normalizeStorageText(candidate.title) ||
+    id;
 
-  if (!id || !name) {
+  if (!id) {
     return null;
   }
 
-  return { id, name };
+  return {
+    id,
+    name,
+    order: normalizeLocalCategoryOrder(candidate),
+    isVisible: normalizeLocalCategoryVisibility(candidate),
+  };
+}
+
+function normalizeLocalCategoryCollection(value: unknown) {
+  const rawCategories = Array.isArray(value)
+    ? value
+    : value && typeof value === 'object'
+      ? Object.values(value as Record<string, unknown>)
+      : [];
+
+  return rawCategories
+    .map((category) => normalizeLocalCategoryRecord(category))
+    .filter((category): category is StoredLocalCategory => category !== null);
+}
+
+function mergeStoredLocalCategory(
+  currentCategory: StoredLocalCategory | undefined,
+  nextCategory: StoredLocalCategory,
+) {
+  const nextName =
+    nextCategory.name && nextCategory.name !== nextCategory.id
+      ? nextCategory.name
+      : currentCategory?.name || nextCategory.name || nextCategory.id;
+
+  return {
+    id: nextCategory.id,
+    name: nextName,
+    order: nextCategory.order ?? currentCategory?.order ?? null,
+    isVisible: nextCategory.isVisible ?? currentCategory?.isVisible ?? null,
+  } satisfies StoredLocalCategory;
 }
 
 function normalizeLocalCategoryOverrides(value: unknown): StoredLocalCategoryOverrides {
+  const categoryMap = new Map<string, StoredLocalCategory>();
+  const hiddenCategoryIds = new Set<string>();
+  const orderedCategoryIds = new Set<string>();
+  const renamedCategoryIds = new Set<string>();
+
+  const registerCategory = (category: StoredLocalCategory) => {
+    categoryMap.set(
+      category.id,
+      mergeStoredLocalCategory(categoryMap.get(category.id), category),
+    );
+
+    if (category.order !== null) {
+      orderedCategoryIds.add(category.id);
+    }
+
+    if (category.isVisible === false) {
+      hiddenCategoryIds.add(category.id);
+    }
+  };
+
+  if (Array.isArray(value)) {
+    normalizeLocalCategoryCollection(value).forEach(registerCategory);
+
+    return {
+      categories: Array.from(categoryMap.values()),
+      hiddenCategoryIds: Array.from(hiddenCategoryIds),
+      orderedCategoryIds: Array.from(orderedCategoryIds),
+      renamedCategoryIds: [],
+    };
+  }
+
   const candidate =
     value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
-  const rawCategories = Array.isArray(candidate?.categories)
-    ? candidate.categories
-    : Array.isArray(value)
-      ? value
-      : [];
-  const rawDeletedCategoryIds = Array.isArray(candidate?.deletedCategoryIds)
-    ? candidate.deletedCategoryIds
-    : Array.isArray(candidate?.deletedIds)
-      ? candidate.deletedIds
-      : [];
+
+  if (!candidate) {
+    return {
+      categories: [],
+      hiddenCategoryIds: [],
+      orderedCategoryIds: [],
+      renamedCategoryIds: [],
+    };
+  }
+
+  [
+    candidate.categories,
+    candidate.localCategories,
+    candidate.customCategories,
+    candidate.items,
+    candidate.overrides,
+  ].forEach((rawCollection) => {
+    normalizeLocalCategoryCollection(rawCollection).forEach(registerCategory);
+  });
+
+  [
+    candidate.deletedCategoryIds,
+    candidate.deletedIds,
+    candidate.removedCategoryIds,
+    candidate.hiddenCategoryIds,
+    candidate.hiddenIds,
+    candidate.invisibleCategoryIds,
+  ].forEach((rawIds) => {
+    normalizeStorageIdList(rawIds).forEach((categoryId) => {
+      hiddenCategoryIds.add(categoryId);
+    });
+  });
+
+  [
+    candidate.categoryVisibility,
+    candidate.categoryVisibilityMap,
+    candidate.visibilityByCategoryId,
+    candidate.visibleByCategoryId,
+  ].forEach((visibilityMap) => {
+    normalizeStorageBooleanEntries(visibilityMap).forEach(([categoryId, isVisible]) => {
+      if (!isVisible) {
+        hiddenCategoryIds.add(categoryId);
+      }
+    });
+  });
+
+  [
+    candidate.orderedCategoryIds,
+    candidate.categoryOrder,
+    candidate.categoryOrderIds,
+    candidate.sortedCategoryIds,
+    candidate.reorderedCategoryIds,
+    candidate.orderByCategoryId,
+    candidate.categoryPositions,
+  ].forEach((rawOrderState) => {
+    normalizeStorageOrderIds(rawOrderState).forEach((categoryId) => {
+      orderedCategoryIds.add(categoryId);
+    });
+  });
+
+  if (candidate.renamedCategories && typeof candidate.renamedCategories === 'object') {
+    Object.keys(candidate.renamedCategories).forEach((categoryId) => {
+      const normalizedId = normalizeStorageText(categoryId);
+      if (normalizedId) {
+        renamedCategoryIds.add(normalizedId);
+      }
+    });
+  }
+
+  normalizeStorageIdList(candidate.renamedCategoryIds).forEach((categoryId) => {
+    renamedCategoryIds.add(categoryId);
+  });
+
+  hiddenCategoryIds.forEach((categoryId) => {
+    const currentCategory = categoryMap.get(categoryId);
+
+    if (currentCategory) {
+      categoryMap.set(categoryId, {
+        ...currentCategory,
+        isVisible: false,
+      });
+    }
+  });
 
   return {
-    categories: rawCategories
-      .map((category) => normalizeLocalCategoryRecord(category))
-      .filter((category): category is StoredLocalCategory => category !== null),
-    deletedCategoryIds: Array.from(
-      new Set(
-        rawDeletedCategoryIds
-          .map((categoryId) => normalizeStorageText(categoryId))
-          .filter((categoryId) => categoryId.length > 0),
-      ),
-    ),
+    categories: Array.from(categoryMap.values()),
+    hiddenCategoryIds: Array.from(hiddenCategoryIds),
+    orderedCategoryIds: Array.from(orderedCategoryIds),
+    renamedCategoryIds: Array.from(renamedCategoryIds),
   };
 }
 
 function getLocalCategoryStorageKeys(brand: 'natura' | 'nikken') {
-  return LOCAL_CATEGORY_STORAGE_PREFIXES.map((prefix) => `${prefix}_${brand}`);
+  return Array.from(
+    new Set(LOCAL_CATEGORY_STORAGE_PREFIXES.map((prefix) => `${prefix}${brand}`)),
+  );
 }
 
 function isLocalCategoryStorageKeyForBrand(key: string | null | undefined, brand: 'natura' | 'nikken') {
@@ -221,15 +582,125 @@ function readLocalCategoryOverrides(brand: 'natura' | 'nikken') {
     return normalizeLocalCategoryOverrides({});
   }
 
+  const categoryMap = new Map<string, StoredLocalCategory>();
+  const hiddenCategoryIds = new Set<string>();
+  const orderedCategoryIds = new Set<string>();
+  const renamedCategoryIds = new Set<string>();
+
   for (const storageKey of getLocalCategoryStorageKeys(brand)) {
     const parsedValue = safeParseStorageJson<unknown>(localStorage.getItem(storageKey), null);
 
-    if (parsedValue) {
-      return normalizeLocalCategoryOverrides(parsedValue);
+    if (!parsedValue) {
+      continue;
     }
+
+    const normalizedOverrides = normalizeLocalCategoryOverrides(parsedValue);
+
+    normalizedOverrides.categories.forEach((category) => {
+      categoryMap.set(
+        category.id,
+        mergeStoredLocalCategory(categoryMap.get(category.id), category),
+      );
+    });
+
+    normalizedOverrides.hiddenCategoryIds.forEach((categoryId) => {
+      hiddenCategoryIds.add(categoryId);
+    });
+    normalizedOverrides.orderedCategoryIds.forEach((categoryId) => {
+      orderedCategoryIds.add(categoryId);
+    });
+    normalizedOverrides.renamedCategoryIds.forEach((categoryId) => {
+      renamedCategoryIds.add(categoryId);
+    });
   }
 
-  return normalizeLocalCategoryOverrides({});
+  hiddenCategoryIds.forEach((categoryId) => {
+    const currentCategory = categoryMap.get(categoryId);
+
+    if (currentCategory) {
+      categoryMap.set(categoryId, {
+        ...currentCategory,
+        isVisible: false,
+      });
+    }
+  });
+
+  return {
+    categories: Array.from(categoryMap.values()),
+    hiddenCategoryIds: Array.from(hiddenCategoryIds),
+    orderedCategoryIds: Array.from(orderedCategoryIds),
+    renamedCategoryIds: Array.from(renamedCategoryIds),
+  };
+}
+
+function formatLocalCategorySummary(status: LocalCategoryStatus) {
+  const baseSummary =
+    `${status.visibleLocalCategoriesCount} locales visibles, ` +
+    `${status.hiddenCategoriesCount} ocultas y ${status.reorderedCategoriesCount} reordenadas.`;
+
+  const renameSummary =
+    status.renamedCategoriesCount > 0
+      ? ` Hay ${status.renamedCategoriesCount} ${pluralize(
+          status.renamedCategoriesCount,
+          'cambio de nombre activo',
+          'cambios de nombre activos',
+        )}.`
+      : '';
+
+  if (status.movedToUncategorizedProductsCount > 0) {
+    return (
+      `${baseSummary}${renameSummary} ` +
+      `${status.movedToUncategorizedProductsCount} ${pluralize(
+        status.movedToUncategorizedProductsCount,
+        'producto',
+      )} caer${status.movedToUncategorizedProductsCount === 1 ? 'a' : 'an'} en Sin categoria.`
+    );
+  }
+
+  if (status.uncategorizedProductsCount > 0) {
+    return (
+      `${baseSummary}${renameSummary} ` +
+      `${status.uncategorizedProductsCount} ${pluralize(
+        status.uncategorizedProductsCount,
+        'producto',
+      )} ya ${status.uncategorizedProductsCount === 1 ? 'esta' : 'estan'} en Sin categoria.`
+    );
+  }
+
+  return `${baseSummary}${renameSummary}`.trim();
+}
+
+function formatLocalCategoryImpact(status: LocalCategoryStatus) {
+  if (
+    status.movedToUncategorizedProductsCount > 0 &&
+    status.uncategorizedProductsCount > 0
+  ) {
+    return (
+      `${status.movedToUncategorizedProductsCount} se mover${status.movedToUncategorizedProductsCount === 1 ? 'a' : 'an'} ` +
+      `por categorias ocultas y ${status.uncategorizedProductsCount} ya ${status.uncategorizedProductsCount === 1 ? 'esta' : 'estan'} ahi.`
+    );
+  }
+
+  if (status.movedToUncategorizedProductsCount > 0) {
+    return (
+      `${status.movedToUncategorizedProductsCount} ${pluralize(
+        status.movedToUncategorizedProductsCount,
+        'producto',
+      )} caer${status.movedToUncategorizedProductsCount === 1 ? 'a' : 'an'} ahi por categorias ocultas.`
+    );
+  }
+
+  if (status.uncategorizedProductsCount > 0) {
+    return (
+      `${status.uncategorizedProductsCount} ${pluralize(
+        status.uncategorizedProductsCount,
+        'producto local',
+        'productos locales',
+      )} ya ${status.uncategorizedProductsCount === 1 ? 'esta' : 'estan'} sin clasificacion.`
+    );
+  }
+
+  return 'Sin productos locales enviados a esta categoria puente.';
 }
 
 function getUniqueCustomerCount(orders: StoredOrderRecord[]) {
@@ -323,10 +794,13 @@ export default function AdminDashboard() {
     deletedProductsCount: 0,
   });
   const [localCategoryStatus, setLocalCategoryStatus] = useState<LocalCategoryStatus>({
-    touchedCategoriesCount: 0,
     localCategoriesCount: 0,
-    deletedCategoriesCount: 0,
+    visibleLocalCategoriesCount: 0,
+    hiddenCategoriesCount: 0,
+    reorderedCategoriesCount: 0,
+    renamedCategoriesCount: 0,
     uncategorizedProductsCount: 0,
+    movedToUncategorizedProductsCount: 0,
   });
 
   useEffect(() => {
@@ -427,20 +901,15 @@ export default function AdminDashboard() {
       const activeLocalProducts = productOverrides.products.filter(
         (product) => !productOverrides.deletedProductIds.includes(product.id),
       );
-      const touchedCategoryIds = new Set<string>();
-
-      activeLocalProducts.forEach((product) => {
-        const categoryId = normalizeStorageText(product.categoryId) || 'uncategorized';
-        touchedCategoryIds.add(categoryId);
-      });
-
-      categoryOverrides.categories.forEach((category) => {
-        touchedCategoryIds.add(category.id);
-      });
-
-      categoryOverrides.deletedCategoryIds.forEach((categoryId) => {
-        touchedCategoryIds.add(categoryId);
-      });
+      const hiddenCategoryIds = new Set(categoryOverrides.hiddenCategoryIds);
+      const visibleLocalCategoriesCount = categoryOverrides.categories.filter((category) => {
+        const categoryId = normalizeStorageText(category.id);
+        return categoryId.length > 0 && category.isVisible !== false && !hiddenCategoryIds.has(categoryId);
+      }).length;
+      const movedToUncategorizedProductsCount = activeLocalProducts.filter((product) => {
+        const categoryId = normalizeStorageText(product.categoryId);
+        return categoryId.length > 0 && categoryId !== 'uncategorized' && hiddenCategoryIds.has(categoryId);
+      }).length;
 
       const uncategorizedProductsCount = activeLocalProducts.filter((product) => {
         const categoryId = normalizeStorageText(product.categoryId);
@@ -448,10 +917,22 @@ export default function AdminDashboard() {
       }).length;
 
       setLocalCategoryStatus({
-        touchedCategoriesCount: touchedCategoryIds.size,
         localCategoriesCount: categoryOverrides.categories.length,
-        deletedCategoriesCount: categoryOverrides.deletedCategoryIds.length,
+        visibleLocalCategoriesCount,
+        hiddenCategoriesCount: hiddenCategoryIds.size,
+        reorderedCategoriesCount: Array.from(
+          new Set(
+            categoryOverrides.orderedCategoryIds.filter(
+              (categoryId) =>
+                categoryId.length > 0 &&
+                categoryId !== 'uncategorized' &&
+                !hiddenCategoryIds.has(categoryId),
+            ),
+          ),
+        ).length,
+        renamedCategoriesCount: categoryOverrides.renamedCategoryIds.length,
         uncategorizedProductsCount,
+        movedToUncategorizedProductsCount,
       });
     };
 
@@ -479,35 +960,36 @@ export default function AdminDashboard() {
     };
 
     syncLocalCategoryStatus();
-    window.addEventListener(
-      'catalog-local-products-changed',
-      handleLocalCatalogChanged as EventListener,
-    );
-    window.addEventListener(
-      'catalog-local-categories-changed',
-      handleLocalCatalogChanged as EventListener,
-    );
+    window.addEventListener('catalog-local-products-changed', handleLocalCatalogChanged as EventListener);
+    LOCAL_CATEGORY_EVENT_NAMES.forEach((eventName) => {
+      window.addEventListener(eventName, handleLocalCatalogChanged as EventListener);
+    });
     window.addEventListener('storage', handleStorage);
 
     return () => {
-      window.removeEventListener(
-        'catalog-local-products-changed',
-        handleLocalCatalogChanged as EventListener,
-      );
-      window.removeEventListener(
-        'catalog-local-categories-changed',
-        handleLocalCatalogChanged as EventListener,
-      );
+      window.removeEventListener('catalog-local-products-changed', handleLocalCatalogChanged as EventListener);
+      LOCAL_CATEGORY_EVENT_NAMES.forEach((eventName) => {
+        window.removeEventListener(eventName, handleLocalCatalogChanged as EventListener);
+      });
       window.removeEventListener('storage', handleStorage);
     };
   }, [brand]);
 
   const currentDateLabel = formatHeaderDate(new Date());
   const hasLocalCatalogChanges = localCatalogStatus.changesCount > 0;
+  const localCategoryImpactCount =
+    localCategoryStatus.uncategorizedProductsCount +
+    localCategoryStatus.movedToUncategorizedProductsCount;
+  const localCategoryNeedsAttention = localCategoryImpactCount > 0;
   const hasLocalCategoryChanges =
-    localCategoryStatus.touchedCategoriesCount > 0 ||
     localCategoryStatus.localCategoriesCount > 0 ||
-    localCategoryStatus.deletedCategoriesCount > 0;
+    localCategoryStatus.hiddenCategoriesCount > 0 ||
+    localCategoryStatus.reorderedCategoriesCount > 0 ||
+    localCategoryStatus.renamedCategoriesCount > 0 ||
+    localCategoryImpactCount > 0;
+  const localCategorySummary = hasLocalCategoryChanges
+    ? formatLocalCategorySummary(localCategoryStatus)
+    : 'Sin senales de categorias locales en este momento.';
 
   const {
     monthlyRevenue,
@@ -655,57 +1137,71 @@ export default function AdminDashboard() {
                     Categorias locales de {brandLabel(brand)}
                   </h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    {hasLocalCategoryChanges
-                      ? `${localCategoryStatus.touchedCategoriesCount} categorias reflejan cambios locales en esta marca.`
-                      : 'Sin senales de categorias locales en este momento.'}
+                    {localCategorySummary}
                   </p>
                 </div>
                 <span
                   className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                    hasLocalCategoryChanges
-                      ? 'bg-sky-50 text-sky-700'
+                    localCategoryNeedsAttention
+                      ? 'bg-amber-50 text-amber-700'
+                      : hasLocalCategoryChanges
+                        ? 'bg-sky-50 text-sky-700'
                       : 'bg-slate-100 text-slate-600'
                   }`}
                 >
-                  {hasLocalCategoryChanges ? 'Categorias con cambios' : 'Categorias estables'}
+                  {localCategoryNeedsAttention
+                    ? 'Requiere revision'
+                    : hasLocalCategoryChanges
+                      ? 'Con ajustes locales'
+                      : 'Categorias estables'}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                  <p className="text-sm font-medium text-slate-500">Categorias tocadas</p>
+                  <p className="text-sm font-medium text-slate-500">Locales visibles</p>
                   <p className="mt-2 text-2xl font-bold text-slate-900">
-                    {localCategoryStatus.touchedCategoriesCount}
+                    {localCategoryStatus.visibleLocalCategoriesCount}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    Detectadas desde productos o ajustes locales de la marca.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                  <p className="text-sm font-medium text-slate-500">Categorias locales</p>
-                  <p className="mt-2 text-2xl font-bold text-slate-900">
-                    {localCategoryStatus.localCategoriesCount}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Categorias guardadas localmente en este dispositivo.
+                    {localCategoryStatus.localCategoriesCount > 0
+                      ? `De ${localCategoryStatus.localCategoriesCount} categorias locales detectadas en storage.`
+                      : 'Sin categorias locales creadas o editadas en esta marca.'}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
                   <p className="text-sm font-medium text-slate-500">Ocultas localmente</p>
                   <p className="mt-2 text-2xl font-bold text-slate-900">
-                    {localCategoryStatus.deletedCategoriesCount}
+                    {localCategoryStatus.hiddenCategoriesCount}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    Categorias marcadas para ocultarse solo en esta marca.
+                    No se mostraran en esta marca aunque el catalogo base las tenga.
                   </p>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                  <p className="text-sm font-medium text-slate-500">Productos sin categoria</p>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                  <p className="text-sm font-medium text-slate-500">Reordenadas</p>
                   <p className="mt-2 text-2xl font-bold text-slate-900">
-                    {localCategoryStatus.uncategorizedProductsCount}
+                    {localCategoryStatus.reorderedCategoriesCount}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    Productos locales que aun requieren clasificacion.
+                    {localCategoryStatus.renamedCategoriesCount > 0
+                      ? `${localCategoryStatus.renamedCategoriesCount} cambios de nombre tambien siguen activos.`
+                      : 'Detectadas por metadata de orden o listas legacy de posicion.'}
+                  </p>
+                </div>
+                <div
+                  className={`rounded-2xl border px-4 py-4 ${
+                    localCategoryNeedsAttention
+                      ? 'border-amber-200 bg-amber-50'
+                      : 'border-slate-200 bg-slate-50'
+                  }`}
+                >
+                  <p className="text-sm font-medium text-slate-500">Impacto en Sin categoria</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                    {localCategoryImpactCount}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {formatLocalCategoryImpact(localCategoryStatus)}
                   </p>
                 </div>
               </div>

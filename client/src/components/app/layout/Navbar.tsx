@@ -47,9 +47,11 @@ interface NavbarProps {
 
 const LOCAL_CATEGORY_STORAGE_PREFIXES = [
   'catalog_local_categories_',
+  'catalog_local_category_overrides_',
   'catalog_local_category_',
   'categories_local_',
   'category_local_',
+  'catalog-local-categories:',
 ] as const;
 
 const LOCAL_CATEGORY_EVENT_NAMES = [
@@ -68,6 +70,13 @@ const LOCAL_CATEGORY_ID_PREFIXES = [
   'custom-',
 ] as const;
 
+interface LocalCategorySummary {
+  visibleCustomCount: number;
+  visibleEditedCount: number;
+  hiddenCategoryIds: string[];
+  hasCustomOrder: boolean;
+}
+
 function isLikelyLocalCategoryId(categoryId: string) {
   const normalizedCategoryId = categoryId.trim().toLowerCase();
   return LOCAL_CATEGORY_ID_PREFIXES.some((prefix) => normalizedCategoryId.startsWith(prefix));
@@ -83,60 +92,494 @@ function isLocalCategoryStorageKeyForBrand(key: string | null | undefined, brand
   );
 }
 
-function getSerializedLocalCategoryCount(value: unknown): number {
-  if (!value) {
-    return 0;
+function createEmptyLocalCategorySummary(): LocalCategorySummary {
+  return {
+    visibleCustomCount: 0,
+    visibleEditedCount: 0,
+    hiddenCategoryIds: [],
+    hasCustomOrder: false,
+  };
+}
+
+function normalizeLocalCategoryText(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeLocalCategoryBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value;
   }
 
-  if (Array.isArray(value)) {
-    return value.length;
+  if (typeof value === 'number') {
+    if (value === 1) {
+      return true;
+    }
+
+    if (value === 0) {
+      return false;
+    }
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (
+    normalizedValue === 'true' ||
+    normalizedValue === '1' ||
+    normalizedValue === 'yes' ||
+    normalizedValue === 'visible' ||
+    normalizedValue === 'show' ||
+    normalizedValue === 'shown' ||
+    normalizedValue === 'active'
+  ) {
+    return true;
+  }
+
+  if (
+    normalizedValue === 'false' ||
+    normalizedValue === '0' ||
+    normalizedValue === 'no' ||
+    normalizedValue === 'hidden' ||
+    normalizedValue === 'hide' ||
+    normalizedValue === 'deleted' ||
+    normalizedValue === 'removed' ||
+    normalizedValue === 'inactive'
+  ) {
+    return false;
+  }
+
+  return null;
+}
+
+function normalizeLocalCategoryIdList(value: unknown): string[] {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[\n,;|]+/g)
+      : [];
+
+  return Array.from(
+    new Set(
+      rawValues
+        .map((item) => normalizeLocalCategoryText(item))
+        .filter((item) => item.length > 0),
+    ),
+  );
+}
+
+function hasLocalCategoryOrderValue(value: unknown) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value);
+  }
+
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function createMutableLocalCategorySummary() {
+  return {
+    visibleCustomIds: new Set<string>(),
+    visibleEditedIds: new Set<string>(),
+    hiddenCategoryIds: new Set<string>(),
+    hasCustomOrder: false,
+  };
+}
+
+function markVisibleLocalCategoryId(
+  categoryId: string,
+  summary: ReturnType<typeof createMutableLocalCategorySummary>,
+) {
+  const normalizedCategoryId = normalizeLocalCategoryText(categoryId);
+
+  if (!normalizedCategoryId) {
+    return;
+  }
+
+  summary.hiddenCategoryIds.delete(normalizedCategoryId);
+  summary.visibleCustomIds.delete(normalizedCategoryId);
+  summary.visibleEditedIds.delete(normalizedCategoryId);
+
+  if (isLikelyLocalCategoryId(normalizedCategoryId)) {
+    summary.visibleCustomIds.add(normalizedCategoryId);
+    return;
+  }
+
+  summary.visibleEditedIds.add(normalizedCategoryId);
+}
+
+function markHiddenLocalCategoryId(
+  categoryId: string,
+  summary: ReturnType<typeof createMutableLocalCategorySummary>,
+) {
+  const normalizedCategoryId = normalizeLocalCategoryText(categoryId);
+
+  if (!normalizedCategoryId) {
+    return;
+  }
+
+  summary.hiddenCategoryIds.add(normalizedCategoryId);
+  summary.visibleCustomIds.delete(normalizedCategoryId);
+  summary.visibleEditedIds.delete(normalizedCategoryId);
+}
+
+function applyLocalCategoryEntry(
+  value: unknown,
+  summary: ReturnType<typeof createMutableLocalCategorySummary>,
+  fallbackId = '',
+) {
+  if (!value) {
+    return;
   }
 
   if (typeof value !== 'object') {
-    return 0;
+    if (fallbackId) {
+      markVisibleLocalCategoryId(fallbackId, summary);
+    }
+    return;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const categoryId =
+    normalizeLocalCategoryText(candidate.id) ||
+    normalizeLocalCategoryText(candidate.categoryId) ||
+    fallbackId;
+
+  if (!categoryId) {
+    return;
+  }
+
+  const visibleFlag = normalizeLocalCategoryBoolean(
+    candidate.visible ?? candidate.isVisible ?? candidate.enabled,
+  );
+  const hiddenFlag = normalizeLocalCategoryBoolean(
+    candidate.hidden ??
+      candidate.isHidden ??
+      candidate.deleted ??
+      candidate.removed ??
+      candidate.archived,
+  );
+  const visibilityState =
+    typeof candidate.visibility === 'string' ? candidate.visibility.trim().toLowerCase() : '';
+  const isHidden =
+    hiddenFlag === true ||
+    visibleFlag === false ||
+    visibilityState === 'hidden' ||
+    visibilityState === 'deleted' ||
+    visibilityState === 'removed' ||
+    visibilityState === 'collapsed' ||
+    visibilityState === 'off';
+
+  if (
+    hasLocalCategoryOrderValue(
+      candidate.order ??
+        candidate.sortOrder ??
+        candidate.position ??
+        candidate.index ??
+        candidate.rank,
+    )
+  ) {
+    summary.hasCustomOrder = true;
+  }
+
+  if (isHidden) {
+    markHiddenLocalCategoryId(categoryId, summary);
+    return;
+  }
+
+  markVisibleLocalCategoryId(categoryId, summary);
+}
+
+function applyLocalCategoryEntries(
+  value: unknown,
+  summary: ReturnType<typeof createMutableLocalCategorySummary>,
+) {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => applyLocalCategoryEntry(entry, summary));
+    return;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+
+  Object.entries(value as Record<string, unknown>).forEach(([categoryId, entry]) => {
+    applyLocalCategoryEntry(entry, summary, normalizeLocalCategoryText(categoryId));
+  });
+}
+
+function applyLocalCategoryVisibilityMap(
+  value: unknown,
+  summary: ReturnType<typeof createMutableLocalCategorySummary>,
+  mode: 'visible' | 'hidden',
+) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return;
+  }
+
+  Object.entries(value as Record<string, unknown>).forEach(([categoryId, rawValue]) => {
+    const visibilityFlag = normalizeLocalCategoryBoolean(rawValue);
+
+    if (visibilityFlag === null) {
+      return;
+    }
+
+    if (mode === 'hidden') {
+      if (visibilityFlag) {
+        markHiddenLocalCategoryId(categoryId, summary);
+      } else {
+        markVisibleLocalCategoryId(categoryId, summary);
+      }
+      return;
+    }
+
+    if (visibilityFlag) {
+      markVisibleLocalCategoryId(categoryId, summary);
+    } else {
+      markHiddenLocalCategoryId(categoryId, summary);
+    }
+  });
+}
+
+function applyLocalCategoryOrder(
+  value: unknown,
+  summary: ReturnType<typeof createMutableLocalCategorySummary>,
+) {
+  if (normalizeLocalCategoryIdList(value).length > 1) {
+    summary.hasCustomOrder = true;
+    return;
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return;
+  }
+
+  const hasOrderedMapEntries = Object.entries(value as Record<string, unknown>).some(
+    ([categoryId, orderValue]) =>
+      normalizeLocalCategoryText(categoryId).length > 0 && hasLocalCategoryOrderValue(orderValue),
+  );
+
+  if (hasOrderedMapEntries) {
+    summary.hasCustomOrder = true;
+  }
+}
+
+function mergeSerializedLocalCategorySummary(
+  value: unknown,
+  summary: ReturnType<typeof createMutableLocalCategorySummary>,
+) {
+  if (!value) {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    applyLocalCategoryEntries(value, summary);
+    return;
+  }
+
+  if (typeof value !== 'object') {
+    return;
   }
 
   const candidate = value as Record<string, unknown>;
 
-  if (Array.isArray(candidate.categories)) {
-    return candidate.categories.length;
-  }
+  [
+    candidate.categories,
+    candidate.localCategories,
+    candidate.customCategories,
+    candidate.items,
+    candidate.list,
+    candidate.overrides,
+    candidate.visibleCategories,
+  ].forEach((entries) => applyLocalCategoryEntries(entries, summary));
 
-  if (Array.isArray(candidate.items)) {
-    return candidate.items.length;
-  }
+  [
+    candidate.entities,
+    candidate.byId,
+    candidate.categoriesById,
+    candidate.categoryMap,
+  ].forEach((entries) => applyLocalCategoryEntries(entries, summary));
 
-  if (Array.isArray(candidate.list)) {
-    return candidate.list.length;
-  }
+  [
+    candidate.deletedCategoryIds,
+    candidate.hiddenCategoryIds,
+    candidate.deletedIds,
+    candidate.removedCategoryIds,
+    candidate.removedIds,
+    candidate.hiddenIds,
+  ].forEach((hiddenIds) => {
+    normalizeLocalCategoryIdList(hiddenIds).forEach((categoryId) => {
+      markHiddenLocalCategoryId(categoryId, summary);
+    });
+  });
 
-  if (candidate.entities && typeof candidate.entities === 'object') {
-    return Object.keys(candidate.entities as Record<string, unknown>).length;
-  }
+  [
+    candidate.renamedCategories,
+    candidate.editedCategories,
+  ].forEach((editedCategories) => {
+    if (!editedCategories || typeof editedCategories !== 'object' || Array.isArray(editedCategories)) {
+      return;
+    }
 
-  return 0;
+    Object.keys(editedCategories as Record<string, unknown>).forEach((categoryId) => {
+      markVisibleLocalCategoryId(categoryId, summary);
+    });
+  });
+
+  applyLocalCategoryVisibilityMap(
+    candidate.categoryVisibility ?? candidate.visibilityById,
+    summary,
+    'visible',
+  );
+  applyLocalCategoryVisibilityMap(candidate.hiddenById, summary, 'hidden');
+
+  [
+    candidate.orderedCategoryIds,
+    candidate.categoryOrder,
+    candidate.sortedCategoryIds,
+    candidate.order,
+    candidate.positionsById,
+  ].forEach((orderValue) => applyLocalCategoryOrder(orderValue, summary));
 }
 
-function countLocalCategoriesForBrand(brand: string) {
+function getLocalCategoryStorageKeysForBrand(brand: string) {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return 0;
+    return [];
   }
 
-  return Object.keys(localStorage)
-    .filter((key) => isLocalCategoryStorageKeyForBrand(key, brand))
-    .reduce((count, key) => {
-      const rawValue = localStorage.getItem(key);
+  const prioritizedKeys = LOCAL_CATEGORY_STORAGE_PREFIXES.map((prefix) => `${prefix}${brand}`);
+  const matchingKeys = Object.keys(localStorage).filter((key) =>
+    isLocalCategoryStorageKeyForBrand(key, brand),
+  );
 
-      if (!rawValue) {
-        return count;
-      }
+  return Array.from(new Set([...prioritizedKeys, ...matchingKeys])).filter(
+    (key) => localStorage.getItem(key) !== null,
+  );
+}
 
-      try {
-        return count + getSerializedLocalCategoryCount(JSON.parse(rawValue));
-      } catch {
-        return count;
-      }
-    }, 0);
+function getLocalCategorySummaryForBrand(brand: string): LocalCategorySummary {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return createEmptyLocalCategorySummary();
+  }
+
+  const summary = createMutableLocalCategorySummary();
+
+  getLocalCategoryStorageKeysForBrand(brand).forEach((key) => {
+    const rawValue = localStorage.getItem(key);
+
+    if (!rawValue) {
+      return;
+    }
+
+    try {
+      mergeSerializedLocalCategorySummary(JSON.parse(rawValue), summary);
+    } catch {
+      return;
+    }
+  });
+
+  return {
+    visibleCustomCount: summary.visibleCustomIds.size,
+    visibleEditedCount: summary.visibleEditedIds.size,
+    hiddenCategoryIds: Array.from(summary.hiddenCategoryIds),
+    hasCustomOrder: summary.hasCustomOrder,
+  };
+}
+
+function isCategoryHidden(category: Category, hiddenCategoryIds: Set<string>) {
+  if (hiddenCategoryIds.has(category.id)) {
+    return true;
+  }
+
+  const candidate = category as Category & {
+    visible?: unknown;
+    isVisible?: unknown;
+    hidden?: unknown;
+    isHidden?: unknown;
+    visibility?: unknown;
+  };
+  const visibleFlag = normalizeLocalCategoryBoolean(candidate.visible ?? candidate.isVisible);
+  const hiddenFlag = normalizeLocalCategoryBoolean(candidate.hidden ?? candidate.isHidden);
+  const visibilityState =
+    typeof candidate.visibility === 'string' ? candidate.visibility.trim().toLowerCase() : '';
+
+  return (
+    hiddenFlag === true ||
+    visibleFlag === false ||
+    visibilityState === 'hidden' ||
+    visibilityState === 'deleted' ||
+    visibilityState === 'removed' ||
+    visibilityState === 'collapsed' ||
+    visibilityState === 'off'
+  );
+}
+
+function getLocalCategoryBadgeLabel(summary: {
+  visibleCustomCount: number;
+  visibleEditedCount: number;
+  hiddenCount: number;
+  hasCustomOrder: boolean;
+}) {
+  if (summary.hiddenCount > 0 && summary.hasCustomOrder) {
+    return `Orden local + ${summary.hiddenCount} oculta${summary.hiddenCount === 1 ? '' : 's'}`;
+  }
+
+  if (summary.hiddenCount > 0) {
+    return `${summary.hiddenCount} oculta${summary.hiddenCount === 1 ? '' : 's'}`;
+  }
+
+  if (summary.hasCustomOrder) {
+    return 'Orden local';
+  }
+
+  if (summary.visibleCustomCount > 0) {
+    return `${summary.visibleCustomCount} local${summary.visibleCustomCount === 1 ? '' : 'es'}`;
+  }
+
+  if (summary.visibleEditedCount > 0) {
+    return `${summary.visibleEditedCount} ajustada${summary.visibleEditedCount === 1 ? '' : 's'}`;
+  }
+
+  return 'Locales activas';
+}
+
+function getLocalCategoryBadgeTitle(
+  siteName: string,
+  summary: {
+    visibleCustomCount: number;
+    visibleEditedCount: number;
+    hiddenCount: number;
+    hasCustomOrder: boolean;
+  },
+) {
+  const details: string[] = [];
+
+  if (summary.visibleCustomCount > 0) {
+    details.push(
+      `${summary.visibleCustomCount} categoria${summary.visibleCustomCount === 1 ? '' : 's'} local${summary.visibleCustomCount === 1 ? '' : 'es'} visible${summary.visibleCustomCount === 1 ? '' : 's'}`,
+    );
+  }
+
+  if (summary.visibleEditedCount > 0) {
+    details.push(
+      `${summary.visibleEditedCount} ajustada${summary.visibleEditedCount === 1 ? '' : 's'}`,
+    );
+  }
+
+  if (summary.hiddenCount > 0) {
+    details.push(`${summary.hiddenCount} oculta${summary.hiddenCount === 1 ? '' : 's'}`);
+  }
+
+  if (summary.hasCustomOrder) {
+    details.push('orden local aplicado');
+  }
+
+  if (details.length === 0) {
+    return `La marca activa tiene categorias locales aplicadas en ${siteName}.`;
+  }
+
+  return `Categorias locales aplicadas en ${siteName}: ${details.join(', ')}.`;
 }
 
 export function Navbar({
@@ -155,7 +598,9 @@ export function Navbar({
   const [favoriteCount, setFavoriteCount] = useState(0);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(true);
   const [hasLogoError, setHasLogoError] = useState(false);
-  const [localCategoryCount, setLocalCategoryCount] = useState(0);
+  const [localCategorySummary, setLocalCategorySummary] = useState<LocalCategorySummary>(
+    createEmptyLocalCategorySummary,
+  );
   const homePath = isNikken ? '/nikken' : '/';
   const favoritesPath = isNikken ? '/nikken/account/favorites' : '/account/favorites';
   const mobileSearchInputId = `${brand}-navbar-mobile-search`;
@@ -206,11 +651,11 @@ export function Navbar({
   }, [logoImageUrl, brand]);
 
   useEffect(() => {
-    const syncLocalCategoryCount = () => {
+    const syncLocalCategorySummary = () => {
       try {
-        setLocalCategoryCount(countLocalCategoriesForBrand(brand));
+        setLocalCategorySummary(getLocalCategorySummaryForBrand(brand));
       } catch {
-        setLocalCategoryCount(0);
+        setLocalCategorySummary(createEmptyLocalCategorySummary());
       }
     };
 
@@ -224,17 +669,17 @@ export function Navbar({
         detail.brand === brand ||
         isLocalCategoryStorageKeyForBrand(detail.storageKey, brand)
       ) {
-        syncLocalCategoryCount();
+        syncLocalCategorySummary();
       }
     };
 
     const handleStorageChange = (event: StorageEvent) => {
       if (!event.key || isLocalCategoryStorageKeyForBrand(event.key, brand)) {
-        syncLocalCategoryCount();
+        syncLocalCategorySummary();
       }
     };
 
-    syncLocalCategoryCount();
+    syncLocalCategorySummary();
     LOCAL_CATEGORY_EVENT_NAMES.forEach((eventName) => {
       window.addEventListener(eventName, handleLocalCategoriesChanged as EventListener);
     });
@@ -248,12 +693,30 @@ export function Navbar({
     };
   }, [brand]);
 
-  const localCategoriesInView = categories.filter((category) =>
+  const hiddenLocalCategoryIds = new Set(localCategorySummary.hiddenCategoryIds);
+  const visibleCategories = categories.filter(
+    (category) => !isCategoryHidden(category, hiddenLocalCategoryIds),
+  );
+  const hiddenCategoriesInView = Math.max(categories.length - visibleCategories.length, 0);
+  const localCategoriesInView = visibleCategories.filter((category) =>
     isLikelyLocalCategoryId(category.id),
   ).length;
-  const hasLocalCategoriesApplied = localCategoryCount > 0 || localCategoriesInView > 0;
-  const localCategoryBadgeLabel =
-    localCategoryCount > 0 ? `${localCategoryCount} locales` : 'Locales activas';
+  const effectiveLocalCategorySummary = {
+    visibleCustomCount: Math.max(localCategorySummary.visibleCustomCount, localCategoriesInView),
+    visibleEditedCount: localCategorySummary.visibleEditedCount,
+    hiddenCount: Math.max(localCategorySummary.hiddenCategoryIds.length, hiddenCategoriesInView),
+    hasCustomOrder: localCategorySummary.hasCustomOrder,
+  };
+  const hasLocalCategoriesApplied =
+    effectiveLocalCategorySummary.visibleCustomCount > 0 ||
+    effectiveLocalCategorySummary.visibleEditedCount > 0 ||
+    effectiveLocalCategorySummary.hiddenCount > 0 ||
+    effectiveLocalCategorySummary.hasCustomOrder;
+  const localCategoryBadgeLabel = getLocalCategoryBadgeLabel(effectiveLocalCategorySummary);
+  const localCategoryBadgeTitle = getLocalCategoryBadgeTitle(
+    settings.siteName,
+    effectiveLocalCategorySummary,
+  );
 
   const handleLogout = () => {
     logout();
@@ -577,13 +1040,13 @@ export function Navbar({
           {hasLocalCategoriesApplied ? (
             <span
               className="shrink-0 inline-flex items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700"
-              title={`La marca activa tiene categorias locales aplicadas en ${settings.siteName}.`}
+              title={localCategoryBadgeTitle}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
               <span>{localCategoryBadgeLabel}</span>
             </span>
           ) : null}
-          {categories.map((category) => (
+          {visibleCategories.map((category) => (
             <button
               key={category.id}
               onClick={() => onCategorySelect(category.id)}
