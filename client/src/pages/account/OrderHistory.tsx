@@ -9,13 +9,20 @@ import { Card, CardContent } from '@/components/shared/ui/card';
 import { Input } from '@/components/shared/ui/input';
 import { Link } from 'wouter';
 import {
-  isOrdersStorageKeyForBrand,
+  getOrdersStorageKey,
   getOrderStatusClasses,
   getOrderStatusLabel,
   getPaymentMethodLabel,
   listOrdersByBrand,
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
+import { normalizeStorageScopeId } from '@/lib/storageScope';
+
+type OrdersChangedDetail = {
+  brand?: string;
+  scopeId?: string;
+  source?: 'local' | 'remote';
+};
 
 const orderDateFormatter = new Intl.DateTimeFormat('es-MX', {
   day: 'numeric',
@@ -61,6 +68,9 @@ export default function OrderHistory() {
   const shouldShowProfileContext = mockProfiles.length > 1 && Boolean(user);
 
   useEffect(() => {
+    const activeScopeId = normalizeStorageScopeId(user?.id);
+    const activeOrdersStorageKey = getOrdersStorageKey(brand, user?.id);
+
     const loadOrders = () => {
       const nextOrders = [...listOrdersByBrand(brand, user?.id)].sort((left, right) =>
         right.createdAt.localeCompare(left.createdAt)
@@ -70,12 +80,23 @@ export default function OrderHistory() {
     };
 
     const handleOrdersChanged = (event: Event) => {
-      const detail = (event as CustomEvent<{ brand?: string; scopeId?: string }>).detail;
+      const detail = (event as CustomEvent<OrdersChangedDetail>).detail;
       const detailBrand = detail?.brand;
+      const isScopedOrdersEvent = detail?.source === 'local' || detail?.source === 'remote';
 
-      if (!detailBrand || detailBrand === brand) {
-        loadOrders();
+      if (detailBrand && detailBrand !== brand) {
+        return;
       }
+
+      if (isScopedOrdersEvent) {
+        if (detail?.scopeId !== activeScopeId) {
+          return;
+        }
+      } else if (detail?.scopeId && detail.scopeId !== activeScopeId) {
+        return;
+      }
+
+      loadOrders();
     };
 
     const handleStorage = (event: StorageEvent) => {
@@ -84,7 +105,7 @@ export default function OrderHistory() {
         return;
       }
 
-      if (AUTH_STORAGE_KEYS.has(event.key) || isOrdersStorageKeyForBrand(event.key, brand)) {
+      if (AUTH_STORAGE_KEYS.has(event.key) || event.key === activeOrdersStorageKey) {
         loadOrders();
       }
     };

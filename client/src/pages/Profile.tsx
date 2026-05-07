@@ -35,6 +35,7 @@ import {
   listOrdersByBrand,
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
+import { normalizeStorageScopeId } from '@/lib/storageScope';
 import type { MockProfileInput, User } from '@/contexts/AuthContext';
 
 const currencyFormatter = new Intl.NumberFormat('es-MX', {
@@ -72,6 +73,12 @@ type ProfileDraft = {
   name: string;
   avatar: string;
   role: 'admin' | 'user';
+};
+
+type OrdersChangedDetail = {
+  brand?: string;
+  scopeId?: string;
+  source?: 'local' | 'remote';
 };
 
 function buildDraftFromUser(profile?: User | null): ProfileDraft {
@@ -129,6 +136,7 @@ export default function Profile() {
     }
 
     const userId = user.id;
+    const activeScopeId = normalizeStorageScopeId(userId);
 
     const loadOrders = () => {
       setLoadingOrders(true);
@@ -144,13 +152,19 @@ export default function Profile() {
     loadOrders();
 
     const handleOrdersChanged = (event: Event) => {
-      const detail = event instanceof CustomEvent ? event.detail : null;
+      const detail =
+        event instanceof CustomEvent ? (event.detail as OrdersChangedDetail | null) : null;
+      const isScopedOrdersEvent = detail?.source === 'local' || detail?.source === 'remote';
 
       if (detail?.brand && detail.brand !== brand) {
         return;
       }
 
-      if (detail?.scopeId && detail.scopeId !== userId) {
+      if (isScopedOrdersEvent) {
+        if (detail.scopeId !== activeScopeId) {
+          return;
+        }
+      } else if (detail?.scopeId && detail.scopeId !== activeScopeId) {
         return;
       }
 

@@ -1,13 +1,12 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { fetchCatalogData, type CatalogData, type CatalogProduct } from '@/lib/dataFetcher';
+import { normalizeStorageScopeId } from '@/lib/storageScope';
 import { Navbar } from '@/components/app/layout/Navbar';
 import { ProductCard } from '@/components/domain/product/ProductCard';
-import { ThemeSelector } from '@/components/shared/ui/ThemeSelector';
 import { LazyCatalogPdfGenerator } from '@/components/domain/catalog/LazyCatalogPdfGenerator';
 import { Footer } from '@/components/app/layout/Footer';
 import { useCart } from '@/hooks/useCart';
 import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
-import { useTheme } from '@/hooks/useTheme';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
@@ -19,7 +18,7 @@ import {
   readLocalCatalogOverrides,
 } from '@/lib/adminCatalogStorage';
 import {
-  isLikesStorageKeyForBrand,
+  getLikesStorageKey,
   readBrandLikeIds,
   toggleBrandLikeId,
 } from '@/lib/storefrontStorage';
@@ -33,12 +32,6 @@ const ProductDetail = lazy(() =>
 const CartDrawer = lazy(() =>
   import('@/components/domain/cart/CartDrawer').then((module) => ({
     default: module.CartDrawer,
-  })),
-);
-
-const ContactFormModal = lazy(() =>
-  import('@/components/shared/ui/ContactFormModal').then((module) => ({
-    default: module.ContactFormModal,
   })),
 );
 
@@ -583,18 +576,15 @@ export default function Home() {
   const [, setLocation] = useLocation();
 
   const { user } = useAuth();
-  const { theme } = useTheme();
   const { brand, isNikken } = useBrand();
   const storefrontSettings = useStorefrontSettings(brand);
   const cart = useCart();
   const userId = user?.id ?? null;
   const activeProfileLabel = user?.name?.trim() || user?.email || 'tu perfil activo';
   const [favoriteCount, setFavoriteCount] = useState(0);
-  const [hasHeroImageError, setHasHeroImageError] = useState(false);
   const activeCategoryRef = useRef('');
 
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
-  const [quickBuyProduct, setQuickBuyProduct] = useState<CatalogProduct | null>(null);
 
   useEffect(() => {
     activeCategoryRef.current = activeCategory;
@@ -660,7 +650,6 @@ export default function Home() {
           setActiveCategory('');
           setCategoryStatusMessage(null);
           setSelectedProduct(null);
-          setQuickBuyProduct(null);
           return;
         }
 
@@ -682,9 +671,6 @@ export default function Home() {
           nextCatalogInfo.products.map((product) => [product.id, product]),
         );
         setSelectedProduct((currentProduct) =>
-          currentProduct ? productsById.get(currentProduct.id) ?? null : null,
-        );
-        setQuickBuyProduct((currentProduct) =>
           currentProduct ? productsById.get(currentProduct.id) ?? null : null,
         );
       } catch (error) {
@@ -756,10 +742,9 @@ export default function Home() {
   }, [brand]);
 
   useEffect(() => {
-    setHasHeroImageError(false);
-  }, [brand, storefrontSettings.heroImageUrl]);
+    const activeScopeId = normalizeStorageScopeId(userId);
+    const likesStorageKey = getLikesStorageKey(brand, userId);
 
-  useEffect(() => {
     const syncFavoriteCount = () => {
       try {
         setFavoriteCount(readBrandLikeIds(brand, userId).length);
@@ -769,15 +754,30 @@ export default function Home() {
     };
 
     const handleLikesChanged = (event: Event) => {
-      const storageKey = (event as CustomEvent<{ storageKey?: string }>).detail?.storageKey;
+      const detail = (event as CustomEvent<{
+        storageKey?: string;
+        brand?: typeof brand;
+        scopeId?: string;
+        source?: 'local' | 'remote';
+      }>).detail;
 
-      if (!storageKey || isLikesStorageKeyForBrand(storageKey, brand)) {
-        syncFavoriteCount();
+      if (detail?.brand && detail.brand !== brand) {
+        return;
       }
+
+      if (detail?.scopeId && detail.scopeId !== activeScopeId) {
+        return;
+      }
+
+      if (detail?.storageKey && detail.storageKey !== likesStorageKey) {
+        return;
+      }
+
+      syncFavoriteCount();
     };
 
     const handleStorageChange = (event: StorageEvent) => {
-      if (!event.key || isLikesStorageKeyForBrand(event.key, brand)) {
+      if (!event.key || event.key === likesStorageKey) {
         syncFavoriteCount();
       }
     };
@@ -825,18 +825,13 @@ export default function Home() {
       product.subBrand.toLowerCase().includes(searchLower) ||
       product.description.toLowerCase().includes(searchLower);
 
-    const matchesTheme =
-      isNikken || searchQuery !== '' || product.gender === theme || product.gender === 'unisex';
-
-    return matchesCategory && matchesSearch && matchesTheme;
+    return matchesCategory && matchesSearch;
   });
 
   const heroEyebrow = storefrontSettings.heroEyebrow.trim();
   const heroTitle = storefrontSettings.siteName.trim();
   const heroSlogan = storefrontSettings.slogan.trim();
   const heroDescription = storefrontSettings.heroDescription.trim();
-  const heroImageUrl = storefrontSettings.heroImageUrl.trim();
-  const shouldShowHeroImage = Boolean(heroImageUrl) && !hasHeroImageError;
   const localCategorySummaryText = formatLocalCategorySummary(localCategorySummary);
   const handleCategorySelect = (categoryId: string) => {
     setCategoryStatusMessage(null);
@@ -855,101 +850,31 @@ export default function Home() {
         products={data.products}
       />
 
-      <main className="container relative mx-auto min-h-[80vh] px-4 py-8 md:py-12">
+      <main className="container relative mx-auto min-h-[80vh] px-4 py-4 md:py-6">
         {!searchQuery && !activeCategory ? (
-          <div className="mx-auto mb-12 max-w-6xl md:mb-16">
-            <div className="grid gap-8 overflow-hidden rounded-[2.5rem] border border-primary/10 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.95),rgba(255,255,255,0.82)_45%,rgba(249,115,22,0.08)_100%)] p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.35)] transition-colors duration-500 md:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] md:p-10 lg:p-12">
-              <div className="flex flex-col justify-center">
-                <div className="mb-6 flex flex-wrap items-center gap-3">
-                  <div className="rounded-full bg-primary/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-primary transition-colors duration-500">
-                    {heroEyebrow || (isNikken ? 'Tecnologia Japonesa' : 'Coleccion 2026')}
-                  </div>
-                  {!isNikken ? <ThemeSelector /> : null}
-                  {data.products ? <LazyCatalogPdfGenerator products={data.products} /> : null}
-                </div>
-
-                <h2 className="display text-4xl font-black leading-tight text-foreground transition-colors duration-500 md:text-5xl lg:text-6xl">
-                  {heroTitle}
-                </h2>
-                <p className="mt-4 max-w-2xl text-lg font-semibold uppercase tracking-[0.2em] text-primary/80 transition-colors duration-500">
-                  {heroSlogan}
+          <section className="mb-6 flex flex-col gap-4 border-b border-border/70 pb-5 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              {heroEyebrow && heroEyebrow !== heroTitle && (
+                <p className="mb-1 text-xs font-black uppercase tracking-[0.18em] text-primary">
+                  {heroEyebrow}
                 </p>
-                <p className="body mt-5 max-w-2xl text-lg leading-8 text-muted-foreground transition-colors duration-500">
-                  {heroDescription}
-                </p>
-
-                <div className="mt-8 inline-flex max-w-3xl flex-wrap items-center gap-2 rounded-2xl border border-primary/10 bg-background/80 px-4 py-3 text-sm text-muted-foreground shadow-sm transition-colors duration-500">
-                  <span className="font-semibold text-foreground/90">{activeProfileLabel}</span>
-                  <span className="hidden text-primary/50 sm:inline">|</span>
-                  <span>
-                    {favoriteCount} favorito{favoriteCount !== 1 ? 's' : ''} guardado
-                    {favoriteCount !== 1 ? 's' : ''} en {heroTitle}
-                  </span>
-                  <span className="hidden text-primary/50 md:inline">|</span>
-                  <span className="hidden md:inline">
-                    Tus likes y guardados se aplican a este perfil activo.
-                  </span>
-                  {hasLocalCatalogOverrides ? (
-                    <>
-                      <span className="hidden text-primary/50 md:inline">|</span>
-                      <span className="text-primary/80">
-                        {localCatalogSummary.customProductsCount > 0
-                          ? `${localCatalogSummary.customProductsCount} producto${localCatalogSummary.customProductsCount === 1 ? '' : 's'} nuevo${localCatalogSummary.customProductsCount === 1 ? '' : 's'}`
-                          : `${localCatalogSummary.editedProductsCount} editado${localCatalogSummary.editedProductsCount === 1 ? '' : 's'} local${localCatalogSummary.editedProductsCount === 1 ? '' : 'es'}`}
-                      </span>
-                    </>
-                  ) : null}
-                  {hasLocalCategoryOverrides ? (
-                    <>
-                      <span className="hidden text-primary/50 md:inline">|</span>
-                      <span className="text-primary/70">{localCategorySummaryText}</span>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="relative flex min-h-[260px] items-center justify-center">
-                <div className="absolute inset-8 rounded-[2rem] bg-gradient-to-br from-primary/15 via-transparent to-secondary/20 blur-2xl" />
-                <div className="relative flex w-full max-w-md flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white/85 p-4 shadow-[0_24px_50px_-30px_rgba(15,23,42,0.45)] backdrop-blur-xl">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-black uppercase tracking-[0.28em] text-primary/70">
-                        {heroEyebrow || heroTitle}
-                      </p>
-                      <p className="mt-2 text-lg font-bold text-slate-900">{heroTitle}</p>
-                    </div>
-                    <div className="rounded-full bg-slate-900 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white">
-                      {isNikken ? 'Wellness' : 'Catalogo'}
-                    </div>
-                  </div>
-
-                  {shouldShowHeroImage ? (
-                    <div className="relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-primary/5 via-white to-secondary/10">
-                      <img
-                        src={heroImageUrl}
-                        alt={heroTitle}
-                        className="h-[280px] w-full object-cover md:h-[360px]"
-                        onError={() => setHasHeroImageError(true)}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-[280px] flex-col justify-end rounded-[1.75rem] bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.16),transparent_35%),linear-gradient(160deg,rgba(255,255,255,0.98),rgba(248,250,252,0.9),rgba(241,245,249,0.86))] p-6 md:h-[360px]">
-                      <div className="max-w-xs rounded-[1.5rem] border border-primary/10 bg-white/80 p-5 shadow-sm backdrop-blur">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-primary/70">
-                          Seleccion activa
-                        </p>
-                        <p className="mt-3 text-2xl font-black text-slate-900">{heroTitle}</p>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">
-                          {heroDescription}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
+              <h1 className="heading truncate text-2xl font-black text-foreground md:text-3xl">
+                {heroTitle}
+              </h1>
+              <p className="mt-1 max-w-3xl text-sm text-muted-foreground md:text-base">
+                {heroSlogan || heroDescription}
+              </p>
             </div>
-          </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="rounded-full border border-border px-3 py-1 text-sm font-semibold text-muted-foreground">
+                {data.products.length} productos
+              </span>
+              <LazyCatalogPdfGenerator products={data.products} />
+            </div>
+          </section>
         ) : null}
+
 
         <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
@@ -958,7 +883,7 @@ export default function Home() {
                 ? data.categories.find((category) => category.id === activeCategory)?.name
                 : searchQuery
                   ? `Resultados para "${searchQuery}"`
-                  : 'Productos Para Ti'}
+                  : 'Todos los productos'}
             </h3>
             <p className="ml-4 mt-2 text-sm font-semibold text-muted-foreground">
               {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''}{' '}
@@ -983,11 +908,7 @@ export default function Home() {
             ) : null}
           </div>
 
-          {!isNikken && (searchQuery || activeCategory) ? (
-            <div className="hidden sm:block">
-              <ThemeSelector />
-            </div>
-          ) : null}
+          {searchQuery || activeCategory ? <LazyCatalogPdfGenerator products={data.products} /> : null}
         </div>
 
         {filteredProducts.length > 0 ? (
@@ -997,7 +918,6 @@ export default function Home() {
                 key={product.id}
                 product={product}
                 onViewDetail={setSelectedProduct}
-                onQuickBuy={setQuickBuyProduct}
                 onAddToCart={(currentProduct) => cart.addItem(currentProduct, 1)}
               />
             ))}
@@ -1047,16 +967,7 @@ export default function Home() {
               toggleBrandLikeId(brand, selectedProduct.id, userId);
               setSelectedProduct({ ...selectedProduct });
             }}
-          />
-        </Suspense>
-      ) : null}
-
-      {quickBuyProduct ? (
-        <Suspense fallback={null}>
-          <ContactFormModal
-            product={quickBuyProduct}
-            isOpen={!!quickBuyProduct}
-            onClose={() => setQuickBuyProduct(null)}
+            onSelectProduct={setSelectedProduct}
           />
         </Suspense>
       ) : null}

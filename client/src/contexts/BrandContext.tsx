@@ -1,5 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useLocation } from 'wouter';
+import React, { createContext, useContext } from 'react';
 
 export type Brand = 'natura' | 'nikken';
 
@@ -12,28 +11,15 @@ interface BrandContextType {
 const BrandContext = createContext<BrandContextType | undefined>(undefined);
 
 export function BrandProvider({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
-  const [brand, setBrand] = useState<Brand>('natura');
-
-  useEffect(() => {
-    if (location.startsWith('/nikken')) {
-      setBrand('nikken');
-    } else {
-      setBrand('natura');
-    }
-  }, [location]);
-
-  const value = {
-    brand,
-    isNatura: brand === 'natura',
-    isNikken: brand === 'nikken',
+  const value: BrandContextType = {
+    brand: 'natura',
+    isNatura: true,
+    isNikken: false,
   };
 
   return (
     <BrandContext.Provider value={value}>
-      <div className={brand === 'nikken' ? 'theme-nikken' : ''}>
-        {children}
-      </div>
+      <div>{children}</div>
     </BrandContext.Provider>
   );
 }

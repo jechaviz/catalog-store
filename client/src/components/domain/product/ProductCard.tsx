@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Heart, Eye, MessageCircle, ShoppingCart } from 'lucide-react';
+import { type MouseEvent, useEffect, useState } from 'react';
+import { Heart, Eye, ShoppingCart } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
 import { Button } from '@/components/shared/ui/button';
@@ -10,7 +10,9 @@ import {
     readLocalCatalogOverrides,
 } from '@/lib/adminCatalogStorage';
 import type { CatalogProduct } from '@/lib/dataFetcher';
+import { normalizeStorageScopeId } from '@/lib/storageScope';
 import {
+    getLikesStorageKey,
     getProductFallbackImage,
     readBrandLikeIds,
     toggleBrandLikeId,
@@ -19,16 +21,23 @@ import {
 interface ProductCardProps {
     product: CatalogProduct;
     onViewDetail: (product: CatalogProduct) => void;
-    onQuickBuy: (product: CatalogProduct) => void;
     onAddToCart: (product: CatalogProduct) => void;
 }
 
 type LocalStatus = 'new' | 'edited' | null;
 
+function formatCardPrice(price: number) {
+    const hasCents = Math.abs(price % 1) > 0.001;
+
+    return price.toLocaleString('en-US', {
+        minimumFractionDigits: hasCents ? 2 : 0,
+        maximumFractionDigits: hasCents ? 2 : 0,
+    });
+}
+
 export function ProductCard({
     product,
     onViewDetail,
-    onQuickBuy,
     onAddToCart,
 }: ProductCardProps) {
     const [isLiked, setIsLiked] = useState(false);
@@ -43,16 +52,42 @@ export function ProductCard({
     );
 
     useEffect(() => {
+        const activeScopeId = normalizeStorageScopeId(user?.id);
+        const likesStorageKey = getLikesStorageKey(brand, user?.id);
+
         const syncLikedState = () => {
             const likedItems = readBrandLikeIds(brand, user?.id);
             setIsLiked(likedItems.includes(product.id));
         };
 
+        const handleLikesChanged = (event: Event) => {
+            const detail = (event as CustomEvent<{
+                storageKey?: string;
+                brand?: typeof brand;
+                scopeId?: string;
+                source?: 'local' | 'remote';
+            }>).detail;
+
+            if (detail?.brand && detail.brand !== brand) {
+                return;
+            }
+
+            if (detail?.scopeId && detail.scopeId !== activeScopeId) {
+                return;
+            }
+
+            if (detail?.storageKey && detail.storageKey !== likesStorageKey) {
+                return;
+            }
+
+            syncLikedState();
+        };
+
         syncLikedState();
-        window.addEventListener('catalog-likes-changed', syncLikedState);
+        window.addEventListener('catalog-likes-changed', handleLikesChanged as EventListener);
 
         return () => {
-            window.removeEventListener('catalog-likes-changed', syncLikedState);
+            window.removeEventListener('catalog-likes-changed', handleLikesChanged as EventListener);
         };
     }, [brand, product.id, user?.id]);
 
@@ -95,19 +130,18 @@ export function ProductCard({
         };
     }, [brand, isLocalProduct, product.id]);
 
-    const toggleLike = () => {
+    const toggleLike = (event: MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation();
         const newLikes = toggleBrandLikeId(brand, product.id, user?.id);
         setIsLiked(newLikes.includes(product.id));
     };
 
     return (
-        <Card className="group relative overflow-hidden bg-white/80 backdrop-blur-sm border-transparent hover:border-primary/20 shadow-sm hover:shadow-2xl transition-all duration-500 rounded-[2rem] flex flex-col h-full">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full filter blur-2xl transform translate-x-10 -translate-y-10 group-hover:bg-primary/10 transition-colors duration-500" />
-
-            <div className="relative aspect-square p-6 flex flex-col items-center justify-center bg-transparent mt-4 group/image overflow-hidden">
-                <div className="absolute top-2 left-4 z-10">
+        <Card className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/25 hover:shadow-lg">
+            <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-muted/25 p-5 group/image">
+                <div className="absolute left-5 top-4 z-10">
                     <span
-                        className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full shadow-sm backdrop-blur-md ${
+                        className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider shadow-sm backdrop-blur-md ${
                             product.inStock
                                 ? 'bg-green-100/80 text-green-700 border border-green-200/50'
                                 : 'bg-orange-100/80 text-orange-700 border border-orange-200/50'
@@ -117,10 +151,10 @@ export function ProductCard({
                     </span>
                 </div>
 
-                <div className="absolute top-14 right-4 z-10 flex flex-col gap-1 items-end">
+                <div className="absolute bottom-4 left-5 z-10 flex flex-col items-start gap-1">
                     {localStatus && (
                         <span
-                            className={`text-[9px] font-black uppercase tracking-[0.1em] px-2 py-0.5 rounded-md shadow-sm ${
+                            className={`rounded-md px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] shadow-sm ${
                                 localStatus === 'new'
                                     ? 'bg-slate-900 text-white'
                                     : 'bg-amber-100 text-amber-800 border border-amber-200'
@@ -132,55 +166,62 @@ export function ProductCard({
                 </div>
 
                 <button
+                    type="button"
                     onClick={toggleLike}
-                    className="absolute top-2 right-4 z-20 p-2.5 rounded-full bg-white/80 backdrop-blur-md shadow-sm hover:shadow-md hover:bg-red-50 transition-all text-muted-foreground hover:text-red-500 group/btn"
-                    title={isLiked ? 'Quitar de favoritos' : 'Anadir a favoritos'}
+                    className="absolute right-4 top-3 z-20 rounded-full bg-white/90 p-2.5 text-muted-foreground shadow-md backdrop-blur-md transition-all hover:bg-red-50 hover:text-red-500 hover:shadow-lg active:scale-95"
+                    title={isLiked ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+                    aria-label={isLiked ? `Quitar ${product.name} de favoritos` : `Añadir ${product.name} a favoritos`}
                 >
                     <Heart
-                        className={`w-5 h-5 transition-transform group-hover/btn:scale-110 ${
-                            isLiked ? 'fill-red-500 text-red-500' : ''
+                        className={`h-5 w-5 transition-all duration-300 ${
+                            isLiked ? 'fill-red-500 text-red-500 scale-110' : ''
                         }`}
                     />
                 </button>
 
-                <div
-                    className="absolute inset-0 bg-primary/20 backdrop-blur-[2px] opacity-0 group-hover/image:opacity-100 transition-opacity duration-300 z-10 flex items-center justify-center cursor-pointer rounded-[2rem]"
-                    onClick={() => onViewDetail(product)}
+                <button
+                    type="button"
+                    className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center bg-primary/5 opacity-0 transition-opacity duration-300 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onViewDetail(product);
+                    }}
+                    aria-label={`Ver detalles de ${product.name}`}
                 >
-                    <div className="w-14 h-14 bg-white text-primary rounded-full shadow-2xl flex items-center justify-center transform scale-50 group-hover/image:scale-100 transition-all duration-300 hover:bg-primary hover:text-white hover:scale-110">
-                        <Eye className="w-6 h-6" />
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full border border-primary/10 bg-white/95 text-primary shadow-xl">
+                        <Eye className="h-6 w-6" />
                     </div>
-                </div>
+                </button>
 
                 <img
                     src={product.imageUrl}
                     alt={product.name}
-                    className="w-full h-full object-contain filter drop-shadow-xl group-hover/image:scale-105 transition-transform duration-500"
+                    className="h-full w-full object-contain drop-shadow-xl transition-transform duration-500 group-hover/image:scale-105"
                     onError={(event) => {
                         (event.target as HTMLImageElement).src = getProductFallbackImage(product.brand);
                     }}
                 />
             </div>
 
-            <div className="p-6 pt-2 flex flex-col flex-grow relative z-10">
-                <div className="flex items-start justify-between gap-4 mb-2">
+            <div className="relative z-10 flex flex-grow flex-col p-5">
+                <div className="mb-3 flex items-start justify-between gap-4">
                     <div>
-                        <p className="font-bold text-xs uppercase tracking-widest text-primary/80 mb-1 heading">
+                        <p className="heading mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-primary/75">
                             {product.brand}
                         </p>
-                        <h3 className="text-xl font-bold text-foreground leading-tight heading line-clamp-2">
+                        <h3 className="heading line-clamp-2 text-lg font-bold leading-tight text-foreground transition-colors group-hover:text-primary">
                             {product.name}
                         </h3>
                         {(product.subBrand || showDeliveryMeta) && (
                             <div className="mt-3 flex flex-wrap gap-2">
                                 {product.subBrand && (
-                                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                                    <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
                                         {product.subBrand}
                                     </span>
                                 )}
                                 {showDeliveryMeta && (
-                                    <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
-                                        {product.deliveryTime}
+                                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[9px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                        Tiempo: {product.deliveryTime}
                                     </span>
                                 )}
                             </div>
@@ -188,44 +229,43 @@ export function ProductCard({
                     </div>
                 </div>
 
-                <p className="text-muted-foreground text-sm line-clamp-2 body mb-6 flex-grow">
+                <p className="body mb-6 line-clamp-2 flex-grow text-xs leading-relaxed text-muted-foreground opacity-85">
                     {product.description}
                 </p>
 
-                <div className="flex items-center justify-between mt-auto">
-                    <div className="flex flex-col min-w-0 pr-2">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase opacity-70 mb-0.5">
+                <div className="mt-auto grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+                    <div className="min-w-0">
+                        <span className="mb-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground opacity-60">
                             Precio
                         </span>
-                        <span className="text-2xl font-black text-primary font-mono tracking-tight truncate">
-                            ${product.price.toFixed(2)}
+                        <span className="block truncate font-mono text-lg font-black leading-none tracking-tight text-primary tabular-nums sm:text-xl">
+                            ${formatCardPrice(product.price)}
                         </span>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex shrink-0 items-center gap-2">
                         <Button
                             variant="outline"
                             onClick={(event) => {
                                 event.stopPropagation();
-                                onQuickBuy(product);
+                                onViewDetail(product);
                             }}
-                            className="rounded-full w-12 h-12 p-0 border-primary/20 hover:bg-primary/10 text-primary transition-all flex items-center justify-center shrink-0 shadow-sm"
-                            title="Contacto / Atencion personal"
+                            className="h-10 w-10 shrink-0 rounded-xl border-primary/15 p-0 text-primary shadow-sm transition-all hover:bg-primary/10"
+                            title="Ver detalles"
+                            aria-label={`Ver detalles de ${product.name}`}
                         >
-                            <MessageCircle className="w-5 h-5" />
+                            <Eye className="h-4 w-4" />
                         </Button>
                         <Button
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onAddToCart(product);
-                                const button = event.currentTarget;
-                                button.classList.add('animate-bounce');
-                                setTimeout(() => button.classList.remove('animate-bounce'), 800);
                             }}
-                            className="rounded-full w-12 h-12 p-0 bg-primary hover:bg-primary/80 active:scale-95 text-white shadow-lg hover:shadow-primary/40 transition-all group/buy shrink-0 flex items-center justify-center"
-                            title="Anadir al carrito"
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary p-0 text-white shadow-lg shadow-primary/20 transition-all hover:bg-primary/90"
+                            title="Añadir al carrito"
+                            aria-label={`Añadir ${product.name} al carrito`}
                         >
-                            <ShoppingCart className="w-5 h-5 group-hover/buy:-rotate-12 transition-transform" />
+                            <ShoppingCart className="h-4 w-4" />
                         </Button>
                     </div>
                 </div>

@@ -18,10 +18,17 @@ import { Card, CardContent } from '@/components/shared/ui/card';
 import { Input } from '@/components/shared/ui/input';
 import { Textarea } from '@/components/shared/ui/textarea';
 import {
-  isOrdersStorageKeyForBrand,
+  getOrdersStorageKey,
   listOrdersByBrand,
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
+import { normalizeStorageScopeId } from '@/lib/storageScope';
+
+type OrdersChangedDetail = {
+  brand?: string;
+  scopeId?: string;
+  source?: 'local' | 'remote';
+};
 
 export default function ReturnsPortal() {
   const { brand } = useBrand();
@@ -37,16 +44,31 @@ export default function ReturnsPortal() {
   const shouldShowProfileContext = mockProfiles.length > 1 && Boolean(user);
 
   useEffect(() => {
+    const activeScopeId = normalizeStorageScopeId(user?.id);
+    const activeOrdersStorageKey = getOrdersStorageKey(brand, user?.id);
+
     const loadOrders = () => {
       setStoredOrders(listOrdersByBrand(brand, user?.id));
     };
 
     const handleOrdersChanged = (event: Event) => {
-      const detailBrand = (event as CustomEvent<{ brand?: string }>).detail?.brand;
+      const detail = (event as CustomEvent<OrdersChangedDetail>).detail;
+      const detailBrand = detail?.brand;
+      const isScopedOrdersEvent = detail?.source === 'local' || detail?.source === 'remote';
 
-      if (!detailBrand || detailBrand === brand) {
-        loadOrders();
+      if (detailBrand && detailBrand !== brand) {
+        return;
       }
+
+      if (isScopedOrdersEvent) {
+        if (detail?.scopeId !== activeScopeId) {
+          return;
+        }
+      } else if (detail?.scopeId && detail.scopeId !== activeScopeId) {
+        return;
+      }
+
+      loadOrders();
     };
 
     const handleStorage = (event: StorageEvent) => {
@@ -55,7 +77,7 @@ export default function ReturnsPortal() {
         return;
       }
 
-      if (AUTH_STORAGE_KEYS.has(event.key) || isOrdersStorageKeyForBrand(event.key, brand)) {
+      if (AUTH_STORAGE_KEYS.has(event.key) || event.key === activeOrdersStorageKey) {
         loadOrders();
       }
     };

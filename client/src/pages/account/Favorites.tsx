@@ -16,8 +16,8 @@ import { Card, CardContent } from '@/components/shared/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
 import { useCart } from '@/hooks/useCart';
-import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import { fetchCatalogData, type CatalogData, type CatalogProduct } from '@/lib/dataFetcher';
+import { normalizeStorageScopeId } from '@/lib/storageScope';
 import {
   applyLocalCatalogOverrides,
   isCustomCatalogProductId,
@@ -25,7 +25,7 @@ import {
   readLocalCatalogOverrides,
 } from '@/lib/adminCatalogStorage';
 import {
-  isLikesStorageKeyForBrand,
+  getLikesStorageKey,
   readBrandLikeIds,
   toggleBrandLikeId,
 } from '@/lib/storefrontStorage';
@@ -39,12 +39,6 @@ const ProductDetail = lazy(() =>
 const CartDrawer = lazy(() =>
   import('@/components/domain/cart/CartDrawer').then((module) => ({
     default: module.CartDrawer,
-  })),
-);
-
-const ContactFormModal = lazy(() =>
-  import('@/components/shared/ui/ContactFormModal').then((module) => ({
-    default: module.ContactFormModal,
   })),
 );
 
@@ -569,7 +563,6 @@ function getLocalCatalogSummary(brand: 'natura' | 'nikken'): LocalCatalogSummary
 export default function Favorites() {
   const { user } = useAuth();
   const { brand, isNikken } = useBrand();
-  const storefrontSettings = useStorefrontSettings(brand);
   const cart = useCart();
   const [, setLocation] = useLocation();
 
@@ -591,7 +584,6 @@ export default function Favorites() {
     hasCustomOrder: false,
   });
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
-  const [quickBuyProduct, setQuickBuyProduct] = useState<CatalogProduct | null>(null);
 
   const brandLabel = isNikken ? 'Nikken' : 'Natura';
   const homePath = isNikken ? '/nikken' : '/';
@@ -601,20 +593,38 @@ export default function Favorites() {
   const activeProfileLabel = user?.name?.trim() || user?.email || 'Perfil activo';
 
   useEffect(() => {
+    const activeScopeId = normalizeStorageScopeId(userId);
+    const likesStorageKey = getLikesStorageKey(brand, userId);
+
     const syncFavoriteIds = () => {
       setFavoriteIds(readBrandLikeIds(brand, userId));
     };
 
     const handleLikesChanged = (event: Event) => {
-      const storageKey = (event as CustomEvent<{ storageKey?: string }>).detail?.storageKey;
+      const detail = (event as CustomEvent<{
+        storageKey?: string;
+        brand?: typeof brand;
+        scopeId?: string;
+        source?: 'local' | 'remote';
+      }>).detail;
 
-      if (!storageKey || isLikesStorageKeyForBrand(storageKey, brand)) {
-        syncFavoriteIds();
+      if (detail?.brand && detail.brand !== brand) {
+        return;
       }
+
+      if (detail?.scopeId && detail.scopeId !== activeScopeId) {
+        return;
+      }
+
+      if (detail?.storageKey && detail.storageKey !== likesStorageKey) {
+        return;
+      }
+
+      syncFavoriteIds();
     };
 
     const handleStorageChange = (event: StorageEvent) => {
-      if (!event.key || isLikesStorageKeyForBrand(event.key, brand)) {
+      if (!event.key || event.key === likesStorageKey) {
         syncFavoriteIds();
       }
     };
@@ -689,7 +699,6 @@ export default function Favorites() {
 
         if (!nextCatalogData) {
           setSelectedProduct(null);
-          setQuickBuyProduct(null);
           return;
         }
 
@@ -697,9 +706,6 @@ export default function Favorites() {
           nextCatalogData.products.map((product) => [product.id, product]),
         );
         setSelectedProduct((currentProduct) =>
-          currentProduct ? productsById.get(currentProduct.id) ?? null : null,
-        );
-        setQuickBuyProduct((currentProduct) =>
           currentProduct ? productsById.get(currentProduct.id) ?? null : null,
         );
       } catch (error) {
@@ -998,7 +1004,6 @@ export default function Favorites() {
                   key={product.id}
                   product={product}
                   onViewDetail={setSelectedProduct}
-                  onQuickBuy={setQuickBuyProduct}
                   onAddToCart={(currentProduct) => cart.addItem(currentProduct, 1)}
                 />
               ))}
@@ -1020,17 +1025,6 @@ export default function Favorites() {
         </Suspense>
       ) : null}
 
-      {quickBuyProduct ? (
-        <Suspense fallback={null}>
-          <ContactFormModal
-            product={quickBuyProduct}
-            isOpen={!!quickBuyProduct}
-            onClose={() => setQuickBuyProduct(null)}
-            sellerPhone={storefrontSettings.sellerPhone}
-          />
-        </Suspense>
-      ) : null}
-
       {selectedProduct ? (
         <Suspense fallback={null}>
           <ProductDetail
@@ -1046,6 +1040,7 @@ export default function Favorites() {
               toggleBrandLikeId(brand, selectedProduct.id, userId);
               setSelectedProduct({ ...selectedProduct });
             }}
+            onSelectProduct={setSelectedProduct}
           />
         </Suspense>
       ) : null}

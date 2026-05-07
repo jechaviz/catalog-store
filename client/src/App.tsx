@@ -11,6 +11,7 @@ import { CartProvider } from "./hooks/useCart";
 import Home from "./pages/Home";
 import { BrandProvider } from "./contexts/BrandContext";
 import { StorefrontStateSync } from "./components/app/StorefrontStateSync";
+import { CommerceStateSync } from "./components/app/CommerceStateSync";
 
 const Checkout = lazy(() => import("./pages/Checkout"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -37,8 +38,7 @@ function AdminRoute({
   component: React.ComponentType;
 }) {
   const { user, isLoading } = useAuth();
-  const [location, setLocation] = useLocation();
-  const isNikkenRoute = location.startsWith("/nikken");
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     if (isLoading) {
@@ -46,14 +46,14 @@ function AdminRoute({
     }
 
     if (!user) {
-      setLocation(isNikkenRoute ? "/nikken" : "/");
+      setLocation("/");
       return;
     }
 
     if (user.role !== "admin") {
-      setLocation(isNikkenRoute ? "/nikken/profile" : "/profile");
+      setLocation("/profile");
     }
-  }, [isLoading, isNikkenRoute, setLocation, user]);
+  }, [isLoading, setLocation, user]);
 
   if (isLoading) {
     return <RouteFallback />;
@@ -72,42 +72,26 @@ function Router() {
     <Suspense fallback={<RouteFallback />}>
       <Switch>
         <Route path="/" component={Home} />
-        <Route path="/nikken" component={Home} />
         <Route path="/checkout" component={Checkout} />
-        <Route path="/nikken/checkout" component={Checkout} />
         <Route path="/profile" component={Profile} />
-        <Route path="/nikken/profile" component={Profile} />
         
         {/* Admin Routes */}
         <Route path="/admin">
           <AdminRoute component={AdminDashboard} />
         </Route>
-        <Route path="/nikken/admin">
-          <AdminRoute component={AdminDashboard} />
-        </Route>
         <Route path="/admin/products">
           <AdminRoute component={ProductManager} />
         </Route>
-        <Route path="/nikken/admin/products">
-          <AdminRoute component={ProductManager} />
-        </Route>
         <Route path="/admin/settings">
-          <AdminRoute component={AdminSettings} />
-        </Route>
-        <Route path="/nikken/admin/settings">
           <AdminRoute component={AdminSettings} />
         </Route>
 
         
         {/* Customer Account Routes */}
         <Route path="/account/orders" component={OrderHistory} />
-        <Route path="/nikken/account/orders" component={OrderHistory} />
         <Route path="/account/tracking/:id" component={OrderTracking} />
-        <Route path="/nikken/account/tracking/:id" component={OrderTracking} />
         <Route path="/account/returns" component={ReturnsPortal} />
-        <Route path="/nikken/account/returns" component={ReturnsPortal} />
         <Route path="/account/favorites" component={Favorites} />
-        <Route path="/nikken/account/favorites" component={Favorites} />
 
         <Route path="/404" component={NotFound} />
 
@@ -125,6 +109,7 @@ function App() {
         <AuthProvider>
           <BrandProvider>
             <StorefrontStateSync />
+            <CommerceStateSync />
             <CartProvider>
               <TooltipProvider>
                 <Toaster />

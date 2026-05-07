@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { useLocation } from "wouter";
 
 export type GenderTheme = "female" | "male" | "unisex";
 type ThemeMode = "light" | "dark";
@@ -24,7 +23,7 @@ const LEGACY_THEME_STORAGE_KEY = "natura_theme_preference";
 const LEGACY_DARK_MODE_STORAGE_KEY = "natura_dark_mode";
 
 function getBrandFromPath(pathname: string): StorefrontBrand {
-  return pathname.startsWith("/nikken") ? "nikken" : "natura";
+  return "natura";
 }
 
 function getThemeStorageKey(brand: StorefrontBrand) {
@@ -88,8 +87,7 @@ export function ThemeProvider({
   defaultTheme = "light",
   defaultGenderTheme = "female",
 }: ThemeProviderProps) {
-  const [location] = useLocation();
-  const activeBrand = getBrandFromPath(location);
+  const activeBrand = getBrandFromPath("");
   const [themePreferences, setThemePreferences] = useState<Record<StorefrontBrand, GenderTheme>>(() =>
     buildInitialThemePreferences(defaultGenderTheme),
   );

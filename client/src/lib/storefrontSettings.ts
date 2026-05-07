@@ -77,11 +77,11 @@ const STOREFRONT_SETTINGS_FIELD_KEYS = [
 
 const DEFAULT_SETTINGS_BY_BRAND: Record<Brand, StorefrontSettings> = {
   natura: {
-    siteName: 'Natura Catalogo',
+    siteName: 'Natura',
     slogan: 'Belleza que cuida de ti',
     logoImageUrl: DEFAULT_LOGO_IMAGE_URL,
     heroImageUrl: '/perfume_fem.png',
-    heroEyebrow: 'Catalogo Natura',
+    heroEyebrow: 'Catálogo Digital',
     heroDescription:
       'Fragancias, cuidado personal y regalos listos para compartir desde una vitrina simple y confiable.',
     sellerPhone: CONFIG.SELLER.PHONE,
@@ -93,11 +93,11 @@ const DEFAULT_SETTINGS_BY_BRAND: Record<Brand, StorefrontSettings> = {
     transferInstructions: DEFAULT_TRANSFER_INSTRUCTIONS,
   },
   nikken: {
-    siteName: 'Nikken Wellness Store',
+    siteName: 'Nikken',
     slogan: 'Descubre el bienestar con tecnologia magnetica',
     logoImageUrl: DEFAULT_LOGO_IMAGE_URL,
     heroImageUrl: '/assets/nikken/products/100.jpg',
-    heroEyebrow: 'Bienestar Nikken',
+    heroEyebrow: 'Wellness Store',
     heroDescription:
       'Soluciones de descanso, confort y estilo de vida para una experiencia de compra mas cercana.',
     sellerPhone: CONFIG.SELLER.PHONE,

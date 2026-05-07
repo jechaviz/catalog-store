@@ -12,6 +12,8 @@ import {
 
 const ORDERS_STORAGE_PREFIX = 'catalog_orders';
 const DEFAULT_CARRIER = 'Confirmacion por WhatsApp';
+export const ORDERS_CHANGED_EVENT = 'catalog-orders-changed';
+export type OrdersChangedSource = 'local' | 'remote';
 
 export type StoredOrderStatus = 'pending' | 'processing' | 'paid' | 'shipped' | 'delivered';
 export type StoredPaymentMethod = 'whatsapp_cash' | 'transfer' | 'connectia' | 'paypal';
@@ -52,6 +54,11 @@ type NewOrderInput = Omit<StoredOrderRecord, 'createdAt' | 'updatedAt'> & {
   updatedAt?: string;
 };
 
+type SaveOrdersOptions = {
+  source?: OrdersChangedSource;
+  suppressEvent?: boolean;
+};
+
 function safeParseJson<T>(rawValue: string | null, fallbackValue: T): T {
   if (!rawValue) {
     return fallbackValue;
@@ -62,6 +69,29 @@ function safeParseJson<T>(rawValue: string | null, fallbackValue: T): T {
   } catch {
     return fallbackValue;
   }
+}
+
+function canUseBrowserStorage() {
+  return typeof window !== 'undefined' && typeof localStorage !== 'undefined';
+}
+
+function serializeForStorage(value: unknown) {
+  return JSON.stringify(value);
+}
+
+function inferOrdersScopeId(storageKey: string, brand: Brand) {
+  const scopedPrefix = `${ORDERS_STORAGE_PREFIX}_${brand}_`;
+
+  if (storageKey.startsWith(scopedPrefix)) {
+    const scopedSuffix = storageKey.slice(scopedPrefix.length).trim();
+    return scopedSuffix || normalizeStorageScopeId();
+  }
+
+  if (storageKey === getLegacyBrandOrdersStorageKey(brand)) {
+    return normalizeStorageScopeId();
+  }
+
+  return undefined;
 }
 
 function isStoredOrderRecord(candidate: unknown, brand: Brand): candidate is StoredOrderRecord {
@@ -80,6 +110,10 @@ function isStoredOrderRecord(candidate: unknown, brand: Brand): candidate is Sto
 }
 
 function readOrdersForStorageKey(storageKey: string, brand: Brand) {
+  if (!canUseBrowserStorage()) {
+    return [];
+  }
+
   const parsed = safeParseJson<unknown[]>(localStorage.getItem(storageKey), []);
   return parsed.filter((candidate): candidate is StoredOrderRecord =>
     isStoredOrderRecord(candidate, brand),
@@ -102,6 +136,10 @@ function buildOrderFingerprint(order: StoredOrderRecord) {
 }
 
 function hydrateGuestOrdersFromLegacy(brand: Brand) {
+  if (!canUseBrowserStorage()) {
+    return [];
+  }
+
   const guestStorageKey = getOrdersStorageKey(brand);
   const legacyStorageKey = getLegacyBrandOrdersStorageKey(brand);
   const legacyOrders = readOrdersForStorageKey(legacyStorageKey, brand);
@@ -131,6 +169,10 @@ export function listOrderStorageKeysForBrand(brand: Brand) {
 }
 
 export function listOrdersByBrand(brand: Brand, userId?: string | null) {
+  if (!canUseBrowserStorage()) {
+    return [];
+  }
+
   const storageKey = getOrdersStorageKey(brand, userId);
   const scopedOrders = readOrdersForStorageKey(storageKey, brand);
 
@@ -146,6 +188,10 @@ export function listOrdersByBrand(brand: Brand, userId?: string | null) {
 }
 
 export function listAllOrdersByBrand(brand: Brand) {
+  if (!canUseBrowserStorage()) {
+    return [];
+  }
+
   const dedupedOrders = new Map<string, StoredOrderRecord>();
 
   for (const storageKey of listOrderStorageKeysForBrand(brand)) {
@@ -164,18 +210,89 @@ export function listAllOrdersByBrand(brand: Brand) {
   return sortOrders(Array.from(dedupedOrders.values()));
 }
 
-export function saveOrdersByBrand(brand: Brand, orders: StoredOrderRecord[], userId?: string | null) {
-  const normalizedOrders = sortOrders(orders.filter(order => order.brand === brand));
-  const storageKey = getOrdersStorageKey(brand, userId);
+function dispatchOrdersChanged(
+  brand: Brand,
+  userId: string | null | undefined,
+  storageKey: string,
+  source: OrdersChangedSource,
+) {
+  if (typeof window === 'undefined') {
+    return;
+  }
 
-  localStorage.setItem(storageKey, JSON.stringify(normalizedOrders));
-  window.dispatchEvent(new CustomEvent('catalog-orders-changed', {
+  window.dispatchEvent(new CustomEvent(ORDERS_CHANGED_EVENT, {
     detail: {
       brand,
-      scopeId: normalizeStorageScopeId(userId),
+      scopeId:
+        userId === undefined
+          ? inferOrdersScopeId(storageKey, brand)
+          : normalizeStorageScopeId(userId),
       storageKey,
+      source,
     },
   }));
+}
+
+export function saveOrdersByBrand(
+  brand: Brand,
+  orders: StoredOrderRecord[],
+  userId?: string | null,
+  options: SaveOrdersOptions = {},
+) {
+  if (!canUseBrowserStorage()) {
+    return [];
+  }
+
+  const normalizedOrders = sortOrders(orders.filter(order => order.brand === brand));
+  const storageKey = getOrdersStorageKey(brand, userId);
+  const currentSerialized = serializeForStorage(sortOrders(readOrdersForStorageKey(storageKey, brand)));
+  const nextSerialized = serializeForStorage(normalizedOrders);
+
+  if (currentSerialized === nextSerialized) {
+    return normalizedOrders;
+  }
+
+  localStorage.setItem(storageKey, nextSerialized);
+  if (!options.suppressEvent) {
+    dispatchOrdersChanged(brand, userId, storageKey, options.source || 'local');
+  }
+
+  return normalizedOrders;
+}
+
+export function replaceOrdersByBrand(
+  brand: Brand,
+  orders: StoredOrderRecord[],
+  userId?: string | null,
+  options: SaveOrdersOptions = {},
+) {
+  return saveOrdersByBrand(brand, orders, userId, options);
+}
+
+export function getOrdersRemotePayload(brand: Brand, userId?: string | null) {
+  return {
+    brand,
+    scopeId: normalizeStorageScopeId(userId),
+    orders: listOrdersByBrand(brand, userId),
+  };
+}
+
+export function hydrateOrdersFromRemoteSnapshot(
+  brand: Brand,
+  payload: unknown,
+  userId?: string | null,
+) {
+  const orders = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && Array.isArray((payload as { orders?: unknown[] }).orders)
+      ? (payload as { orders: unknown[] }).orders
+      : [];
+
+  return replaceOrdersByBrand(brand, orders.filter((order): order is StoredOrderRecord => (
+    Boolean(order) && typeof order === 'object' && isStoredOrderRecord(order, brand)
+  )), userId, {
+    source: 'remote',
+  });
 }
 
 export function upsertOrder(order: NewOrderInput, userId?: string | null) {

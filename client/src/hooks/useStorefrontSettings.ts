@@ -8,6 +8,52 @@ import {
   type StorefrontSettings,
 } from '@/lib/storefrontSettings';
 
+const storefrontSettingsSnapshotCache = new Map<
+  Brand,
+  { rawStorageValue: string | null; snapshot: StorefrontSettings }
+>();
+const defaultStorefrontSettingsSnapshotCache = new Map<Brand, StorefrontSettings>();
+
+function getDefaultStorefrontSettingsSnapshot(brand: Brand) {
+  const cachedSnapshot = defaultStorefrontSettingsSnapshotCache.get(brand);
+
+  if (cachedSnapshot) {
+    return cachedSnapshot;
+  }
+
+  const snapshot = getDefaultStorefrontSettings(brand);
+  defaultStorefrontSettingsSnapshotCache.set(brand, snapshot);
+  return snapshot;
+}
+
+function readRawStorefrontSettingsStorageValue(brand: Brand) {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return null;
+  }
+
+  return localStorage.getItem(getStorefrontSettingsStorageKey(brand));
+}
+
+function getStorefrontSettingsSnapshot(brand: Brand) {
+  if (typeof window === 'undefined') {
+    return getDefaultStorefrontSettingsSnapshot(brand);
+  }
+
+  const rawStorageValue = readRawStorefrontSettingsStorageValue(brand);
+  const cachedSnapshot = storefrontSettingsSnapshotCache.get(brand);
+
+  if (cachedSnapshot?.rawStorageValue === rawStorageValue) {
+    return cachedSnapshot.snapshot;
+  }
+
+  const snapshot = readStorefrontSettings(brand);
+  storefrontSettingsSnapshotCache.set(brand, {
+    rawStorageValue,
+    snapshot,
+  });
+  return snapshot;
+}
+
 function subscribeToStorefrontSettings(brand: Brand, onStoreChange: () => void) {
   if (typeof window === 'undefined') {
     return () => undefined;
@@ -44,7 +90,7 @@ function subscribeToStorefrontSettings(brand: Brand, onStoreChange: () => void) 
 export function useStorefrontSettings(brand: Brand) {
   return useSyncExternalStore<StorefrontSettings>(
     (onStoreChange) => subscribeToStorefrontSettings(brand, onStoreChange),
-    () => readStorefrontSettings(brand),
-    () => getDefaultStorefrontSettings(brand)
+    () => getStorefrontSettingsSnapshot(brand),
+    () => getDefaultStorefrontSettingsSnapshot(brand)
   );
 }

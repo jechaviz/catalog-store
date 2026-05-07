@@ -14,6 +14,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/shared/ui/card";
 import { useBrand } from '@/contexts/BrandContext';
 import {
+  ORDERS_CHANGED_EVENT,
   getOrderStatusClasses,
   getOrderStatusLabel,
   isOrdersStorageKeyForBrand,
@@ -22,6 +23,7 @@ import {
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
 import {
+  LOCAL_CATALOG_EVENT_NAME,
   getLocalCatalogChangesCount,
   isCustomCatalogProductId,
   isLocalCatalogStorageKeyForBrand,
@@ -89,6 +91,12 @@ const LOCAL_CATEGORY_EVENT_NAMES = [
   'catalog-local-categories-changed',
   'catalog-local-category-changed',
 ] as const;
+const LOCAL_CATEGORY_SYNC_EVENT_NAMES = [
+  LOCAL_CATALOG_EVENT_NAME,
+  ...LOCAL_CATEGORY_EVENT_NAMES,
+] as const;
+const ORDER_SYNC_EVENT_NAMES = [ORDERS_CHANGED_EVENT] as const;
+const LOCAL_CATALOG_SYNC_EVENT_NAMES = [LOCAL_CATALOG_EVENT_NAME] as const;
 const LOCAL_CATEGORY_STORAGE_PREFIXES = [
   'catalog-local-categories:',
   'catalog_local_category_',
@@ -703,6 +711,125 @@ function formatLocalCategoryImpact(status: LocalCategoryStatus) {
   return 'Sin productos locales enviados a esta categoria puente.';
 }
 
+function isCatalogOrCategoryStorageKeyForBrand(
+  key: string | null | undefined,
+  brand: 'natura' | 'nikken',
+) {
+  return (
+    isLocalCatalogStorageKeyForBrand(key, brand) ||
+    isLocalCategoryStorageKeyForBrand(key, brand)
+  );
+}
+
+function useDashboardRefreshSignal(
+  brand: 'natura' | 'nikken',
+  eventNames: readonly string[],
+  isStorageKeyRelevant: (key: string | null | undefined, brand: 'natura' | 'nikken') => boolean,
+) {
+  const [signal, setSignal] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const notifyChange = () => {
+      setSignal((currentSignal) => currentSignal + 1);
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key || isStorageKeyRelevant(event.key, brand)) {
+        notifyChange();
+      }
+    };
+
+    eventNames.forEach((eventName) => {
+      window.addEventListener(eventName, notifyChange as EventListener);
+    });
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      eventNames.forEach((eventName) => {
+        window.removeEventListener(eventName, notifyChange as EventListener);
+      });
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [brand, eventNames, isStorageKeyRelevant]);
+
+  return signal;
+}
+
+function getOrdersSnapshot(brand: 'natura' | 'nikken') {
+  if (!canUseBrowserStorage()) {
+    return {
+      orders: [] as StoredOrderRecord[],
+      orderScopeCount: 0,
+    };
+  }
+
+  return {
+    orders: listAllOrdersByBrand(brand),
+    orderScopeCount: listOrderStorageKeysForBrand(brand).filter((storageKey) =>
+      Boolean(localStorage.getItem(storageKey)),
+    ).length,
+  };
+}
+
+function getLocalCatalogStatusSnapshot(brand: 'natura' | 'nikken'): LocalCatalogStatus {
+  const overrides = readLocalCatalogOverrides(brand);
+  const customProductsCount = overrides.products.filter((product) =>
+    isCustomCatalogProductId(product.id),
+  ).length;
+  const editedProductsCount = overrides.products.length - customProductsCount;
+
+  return {
+    changesCount: getLocalCatalogChangesCount(brand),
+    customProductsCount,
+    editedProductsCount,
+    deletedProductsCount: overrides.deletedProductIds.length,
+  };
+}
+
+function getLocalCategoryStatusSnapshot(brand: 'natura' | 'nikken'): LocalCategoryStatus {
+  const categoryOverrides = readLocalCategoryOverrides(brand);
+  const productOverrides = readLocalCatalogOverrides(brand);
+  const activeLocalProducts = productOverrides.products.filter(
+    (product) => !productOverrides.deletedProductIds.includes(product.id),
+  );
+  const hiddenCategoryIds = new Set(categoryOverrides.hiddenCategoryIds);
+  const visibleLocalCategoriesCount = categoryOverrides.categories.filter((category) => {
+    const categoryId = normalizeStorageText(category.id);
+    return categoryId.length > 0 && category.isVisible !== false && !hiddenCategoryIds.has(categoryId);
+  }).length;
+  const movedToUncategorizedProductsCount = activeLocalProducts.filter((product) => {
+    const categoryId = normalizeStorageText(product.categoryId);
+    return categoryId.length > 0 && categoryId !== 'uncategorized' && hiddenCategoryIds.has(categoryId);
+  }).length;
+  const uncategorizedProductsCount = activeLocalProducts.filter((product) => {
+    const categoryId = normalizeStorageText(product.categoryId);
+    return !categoryId || categoryId === 'uncategorized';
+  }).length;
+
+  return {
+    localCategoriesCount: categoryOverrides.categories.length,
+    visibleLocalCategoriesCount,
+    hiddenCategoriesCount: hiddenCategoryIds.size,
+    reorderedCategoriesCount: Array.from(
+      new Set(
+        categoryOverrides.orderedCategoryIds.filter(
+          (categoryId) =>
+            categoryId.length > 0 &&
+            categoryId !== 'uncategorized' &&
+            !hiddenCategoryIds.has(categoryId),
+        ),
+      ),
+    ).length,
+    renamedCategoriesCount: categoryOverrides.renamedCategoryIds.length,
+    uncategorizedProductsCount,
+    movedToUncategorizedProductsCount,
+  };
+}
+
 function getUniqueCustomerCount(orders: StoredOrderRecord[]) {
   const uniqueCustomers = new Set(
     orders.map(order => {
@@ -785,195 +912,34 @@ function getActivityDetails(order: StoredOrderRecord): Omit<DashboardActivity, '
 
 export default function AdminDashboard() {
   const { brand } = useBrand();
-  const [orders, setOrders] = useState<StoredOrderRecord[]>([]);
-  const [orderScopeCount, setOrderScopeCount] = useState(0);
-  const [localCatalogStatus, setLocalCatalogStatus] = useState<LocalCatalogStatus>({
-    changesCount: 0,
-    customProductsCount: 0,
-    editedProductsCount: 0,
-    deletedProductsCount: 0,
-  });
-  const [localCategoryStatus, setLocalCategoryStatus] = useState<LocalCategoryStatus>({
-    localCategoriesCount: 0,
-    visibleLocalCategoriesCount: 0,
-    hiddenCategoriesCount: 0,
-    reorderedCategoriesCount: 0,
-    renamedCategoriesCount: 0,
-    uncategorizedProductsCount: 0,
-    movedToUncategorizedProductsCount: 0,
-  });
+  const ordersSignal = useDashboardRefreshSignal(
+    brand,
+    ORDER_SYNC_EVENT_NAMES,
+    isOrdersStorageKeyForBrand,
+  );
+  const localCatalogSignal = useDashboardRefreshSignal(
+    brand,
+    LOCAL_CATALOG_SYNC_EVENT_NAMES,
+    isLocalCatalogStorageKeyForBrand,
+  );
+  const localCategorySignal = useDashboardRefreshSignal(
+    brand,
+    LOCAL_CATEGORY_SYNC_EVENT_NAMES,
+    isCatalogOrCategoryStorageKeyForBrand,
+  );
 
-  useEffect(() => {
-    const syncOrders = () => {
-      const nextOrders = listAllOrdersByBrand(brand).sort((left, right) =>
-        right.createdAt.localeCompare(left.createdAt),
-      );
-      const nextScopeCount = listOrderStorageKeysForBrand(brand).filter(storageKey =>
-        Boolean(localStorage.getItem(storageKey)) && isOrdersStorageKeyForBrand(storageKey, brand),
-      ).length;
-
-      setOrders(nextOrders);
-      setOrderScopeCount(nextScopeCount);
-    };
-
-    const handleOrdersChanged = (event: Event) => {
-      const { detail } = event as CustomEvent<{ brand?: string; storageKey?: string }>;
-
-      if (
-        !detail?.brand ||
-        detail.brand === brand ||
-        isOrdersStorageKeyForBrand(detail.storageKey, brand)
-      ) {
-        syncOrders();
-      }
-    };
-
-    const handleStorage = (event: StorageEvent) => {
-      if (!event.key || isOrdersStorageKeyForBrand(event.key, brand)) {
-        syncOrders();
-      }
-    };
-
-    syncOrders();
-    window.addEventListener('catalog-orders-changed', handleOrdersChanged as EventListener);
-    window.addEventListener('storage', handleStorage);
-
-    return () => {
-      window.removeEventListener('catalog-orders-changed', handleOrdersChanged as EventListener);
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, [brand]);
-
-  useEffect(() => {
-    const syncLocalCatalogStatus = () => {
-      const overrides = readLocalCatalogOverrides(brand);
-      const customProductsCount = overrides.products.filter(product =>
-        isCustomCatalogProductId(product.id),
-      ).length;
-      const editedProductsCount = overrides.products.length - customProductsCount;
-
-      setLocalCatalogStatus({
-        changesCount: getLocalCatalogChangesCount(brand),
-        customProductsCount,
-        editedProductsCount,
-        deletedProductsCount: overrides.deletedProductIds.length,
-      });
-    };
-
-    const handleLocalCatalogChanged = (event: Event) => {
-      const { detail } = event as CustomEvent<{ brand?: string; storageKey?: string }>;
-
-      if (
-        !detail?.brand ||
-        detail.brand === brand ||
-        isLocalCatalogStorageKeyForBrand(detail.storageKey, brand)
-      ) {
-        syncLocalCatalogStatus();
-      }
-    };
-
-    const handleStorage = (event: StorageEvent) => {
-      if (!event.key || isLocalCatalogStorageKeyForBrand(event.key, brand)) {
-        syncLocalCatalogStatus();
-      }
-    };
-
-    syncLocalCatalogStatus();
-    window.addEventListener(
-      'catalog-local-products-changed',
-      handleLocalCatalogChanged as EventListener,
-    );
-    window.addEventListener('storage', handleStorage);
-
-    return () => {
-      window.removeEventListener(
-        'catalog-local-products-changed',
-        handleLocalCatalogChanged as EventListener,
-      );
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, [brand]);
-
-  useEffect(() => {
-    const syncLocalCategoryStatus = () => {
-      const categoryOverrides = readLocalCategoryOverrides(brand);
-      const productOverrides = readLocalCatalogOverrides(brand);
-      const activeLocalProducts = productOverrides.products.filter(
-        (product) => !productOverrides.deletedProductIds.includes(product.id),
-      );
-      const hiddenCategoryIds = new Set(categoryOverrides.hiddenCategoryIds);
-      const visibleLocalCategoriesCount = categoryOverrides.categories.filter((category) => {
-        const categoryId = normalizeStorageText(category.id);
-        return categoryId.length > 0 && category.isVisible !== false && !hiddenCategoryIds.has(categoryId);
-      }).length;
-      const movedToUncategorizedProductsCount = activeLocalProducts.filter((product) => {
-        const categoryId = normalizeStorageText(product.categoryId);
-        return categoryId.length > 0 && categoryId !== 'uncategorized' && hiddenCategoryIds.has(categoryId);
-      }).length;
-
-      const uncategorizedProductsCount = activeLocalProducts.filter((product) => {
-        const categoryId = normalizeStorageText(product.categoryId);
-        return !categoryId || categoryId === 'uncategorized';
-      }).length;
-
-      setLocalCategoryStatus({
-        localCategoriesCount: categoryOverrides.categories.length,
-        visibleLocalCategoriesCount,
-        hiddenCategoriesCount: hiddenCategoryIds.size,
-        reorderedCategoriesCount: Array.from(
-          new Set(
-            categoryOverrides.orderedCategoryIds.filter(
-              (categoryId) =>
-                categoryId.length > 0 &&
-                categoryId !== 'uncategorized' &&
-                !hiddenCategoryIds.has(categoryId),
-            ),
-          ),
-        ).length,
-        renamedCategoriesCount: categoryOverrides.renamedCategoryIds.length,
-        uncategorizedProductsCount,
-        movedToUncategorizedProductsCount,
-      });
-    };
-
-    const handleLocalCatalogChanged = (event: Event) => {
-      const { detail } = event as CustomEvent<{ brand?: string; storageKey?: string }>;
-
-      if (
-        !detail?.brand ||
-        detail.brand === brand ||
-        isLocalCatalogStorageKeyForBrand(detail.storageKey, brand) ||
-        isLocalCategoryStorageKeyForBrand(detail.storageKey, brand)
-      ) {
-        syncLocalCategoryStatus();
-      }
-    };
-
-    const handleStorage = (event: StorageEvent) => {
-      if (
-        !event.key ||
-        isLocalCatalogStorageKeyForBrand(event.key, brand) ||
-        isLocalCategoryStorageKeyForBrand(event.key, brand)
-      ) {
-        syncLocalCategoryStatus();
-      }
-    };
-
-    syncLocalCategoryStatus();
-    window.addEventListener('catalog-local-products-changed', handleLocalCatalogChanged as EventListener);
-    LOCAL_CATEGORY_EVENT_NAMES.forEach((eventName) => {
-      window.addEventListener(eventName, handleLocalCatalogChanged as EventListener);
-    });
-    window.addEventListener('storage', handleStorage);
-
-    return () => {
-      window.removeEventListener('catalog-local-products-changed', handleLocalCatalogChanged as EventListener);
-      LOCAL_CATEGORY_EVENT_NAMES.forEach((eventName) => {
-        window.removeEventListener(eventName, handleLocalCatalogChanged as EventListener);
-      });
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, [brand]);
+  const { orders, orderScopeCount } = useMemo(
+    () => getOrdersSnapshot(brand),
+    [brand, ordersSignal],
+  );
+  const localCatalogStatus = useMemo(
+    () => getLocalCatalogStatusSnapshot(brand),
+    [brand, localCatalogSignal],
+  );
+  const localCategoryStatus = useMemo(
+    () => getLocalCategoryStatusSnapshot(brand),
+    [brand, localCategorySignal],
+  );
 
   const currentDateLabel = formatHeaderDate(new Date());
   const hasLocalCatalogChanges = localCatalogStatus.changesCount > 0;

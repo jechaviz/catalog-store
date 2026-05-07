@@ -7,11 +7,23 @@ import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
+  normalizeCustomerScopeId,
+  type CustomerCartItem,
+  type CustomerOrderRecord,
+  type CustomerStateResourceKey,
+} from "../shared/customerState";
+import {
   normalizeStorefrontBrand,
   type LocalCatalogOverrides,
   type LocalCategoryOverrides,
   type StorefrontSettings,
 } from "../shared/storefrontState";
+import {
+  readCustomerStateSnapshot,
+  saveCustomerCart,
+  saveCustomerLikes,
+  saveCustomerOrders,
+} from "./customerStateStore";
 import {
   readStorefrontSnapshot,
   saveCategoryOverrides,
@@ -21,6 +33,7 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const ACTIVE_STOREFRONT_BRAND = "natura" as const;
 
 function getApiBrand(req: Request, res: Response) {
   const queryBrand =
@@ -29,14 +42,71 @@ function getApiBrand(req: Request, res: Response) {
       : undefined;
   const brand = normalizeStorefrontBrand(req.params.brand || queryBrand);
 
-  if (!brand) {
+  if (!brand || brand !== ACTIVE_STOREFRONT_BRAND) {
     res.status(400).json({
-      error: "Invalid brand. Use 'natura' or 'nikken'.",
+      error: "Invalid brand. Use 'natura'.",
     });
     return null;
   }
 
   return brand;
+}
+
+function getApiScopeId(req: Request, res: Response) {
+  const queryScope =
+    typeof req.query.scopeId === "string"
+      ? req.query.scopeId
+      : Array.isArray(req.query.scopeId)
+        ? req.query.scopeId[0]
+        : typeof req.query.scope === "string"
+          ? req.query.scope
+          : Array.isArray(req.query.scope)
+            ? req.query.scope[0]
+            : typeof req.query.userId === "string"
+              ? req.query.userId
+              : Array.isArray(req.query.userId)
+                ? req.query.userId[0]
+                : undefined;
+  const scopeId = normalizeCustomerScopeId(req.params.scopeId || queryScope);
+
+  if (!scopeId) {
+    res.status(400).json({
+      error: "Invalid scope id.",
+    });
+    return null;
+  }
+
+  return scopeId;
+}
+
+function getApiCustomerResource(
+  req: Request,
+  res: Response,
+): CustomerStateResourceKey | null {
+  const resourceQueryValue = req.query.resource;
+  const queryResource =
+    typeof resourceQueryValue === "string"
+      ? resourceQueryValue
+      : Array.isArray(resourceQueryValue) && typeof resourceQueryValue[0] === "string"
+        ? resourceQueryValue[0]
+        : undefined;
+  const rawResource =
+    typeof req.params.resource === "string" ? req.params.resource : queryResource;
+
+  if (!rawResource) {
+    return null;
+  }
+
+  const resource = rawResource.trim().toLowerCase();
+
+  if (resource === "orders" || resource === "likes" || resource === "cart") {
+    return resource;
+  }
+
+  res.status(400).json({
+    error: "Invalid customer state resource. Use 'orders', 'likes', or 'cart'.",
+  });
+  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -188,6 +258,96 @@ function unwrapProductPayload(body: unknown): Partial<LocalCatalogOverrides> | n
   return null;
 }
 
+function unwrapOrdersPayload(body: unknown): CustomerOrderRecord[] | null {
+  if (Array.isArray(body)) {
+    return body as CustomerOrderRecord[];
+  }
+
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const directCandidates = [body.orders, body.orderHistory];
+
+  for (const candidate of directCandidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as CustomerOrderRecord[];
+    }
+  }
+
+  const nestedCandidates = [body.payload, body.data, body.value, body.snapshot];
+
+  for (const candidate of nestedCandidates) {
+    const payload = unwrapOrdersPayload(candidate);
+
+    if (payload) {
+      return payload;
+    }
+  }
+
+  return null;
+}
+
+function unwrapLikesPayload(body: unknown): string[] | null {
+  if (Array.isArray(body)) {
+    return body as string[];
+  }
+
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const directCandidates = [body.likes, body.favoriteIds, body.ids];
+
+  for (const candidate of directCandidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as string[];
+    }
+  }
+
+  const nestedCandidates = [body.payload, body.data, body.value, body.snapshot];
+
+  for (const candidate of nestedCandidates) {
+    const payload = unwrapLikesPayload(candidate);
+
+    if (payload) {
+      return payload;
+    }
+  }
+
+  return null;
+}
+
+function unwrapCartPayload(body: unknown): CustomerCartItem[] | null {
+  if (Array.isArray(body)) {
+    return body as CustomerCartItem[];
+  }
+
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const directCandidates = [body.cart, body.items, body.cartItems];
+
+  for (const candidate of directCandidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as CustomerCartItem[];
+    }
+  }
+
+  const nestedCandidates = [body.payload, body.data, body.value, body.snapshot];
+
+  for (const candidate of nestedCandidates) {
+    const payload = unwrapCartPayload(candidate);
+
+    if (payload) {
+      return payload;
+    }
+  }
+
+  return null;
+}
+
 function buildSettingsResponse(
   snapshot: Awaited<ReturnType<typeof readStorefrontSnapshot>>,
 ) {
@@ -206,6 +366,20 @@ function buildCatalogResponse(
     categoryOverrides: snapshot.categoryOverrides,
     productOverrides: snapshot.productOverrides,
     updatedAt: snapshot.updatedAt,
+  };
+}
+
+function buildCustomerSnapshotResponse(
+  snapshot: Awaited<ReturnType<typeof readCustomerStateSnapshot>>,
+) {
+  return {
+    brand: snapshot.brand,
+    scopeId: snapshot.scopeId,
+    orders: snapshot.orders,
+    likes: snapshot.likes,
+    cart: snapshot.cart,
+    updatedAt: snapshot.updatedAt,
+    resourceMeta: snapshot.resourceMeta,
   };
 }
 
@@ -236,6 +410,21 @@ async function startServer() {
   app.get("/api/storefront-state/:brand", sendStorefrontSnapshot);
   app.get("/api/storefront-state", sendStorefrontSnapshot);
   app.get("/api/storefront/:brand/snapshot", sendStorefrontSnapshot);
+
+  const sendCustomerSnapshot = asyncRoute(async (req, res) => {
+    const brand = getApiBrand(req, res);
+    const scopeId = getApiScopeId(req, res);
+
+    if (!brand || !scopeId) {
+      return;
+    }
+
+    res.json(buildCustomerSnapshotResponse(await readCustomerStateSnapshot(brand, scopeId)));
+  });
+
+  app.get("/api/customer-state/:brand/:scopeId", sendCustomerSnapshot);
+  app.get("/api/customer-state/:brand", sendCustomerSnapshot);
+  app.get("/api/customer-state", sendCustomerSnapshot);
 
   const persistSettings = asyncRoute(async (req, res) => {
     const brand = getApiBrand(req, res);
@@ -300,6 +489,113 @@ async function startServer() {
   app.post("/api/storefront-state/:brand/categories", persistCategories);
   app.put("/api/storefront-state/:brand/products", persistProducts);
   app.post("/api/storefront-state/:brand/products", persistProducts);
+
+  const persistCustomerOrdersImpl = async (req: Request, res: Response) => {
+    const brand = getApiBrand(req, res);
+    const scopeId = getApiScopeId(req, res);
+
+    if (!brand || !scopeId) {
+      return;
+    }
+
+    const payload = unwrapOrdersPayload(req.body);
+
+    if (!payload) {
+      res.status(400).json({
+        error: "Orders payload must be a JSON array or wrapped orders collection.",
+      });
+      return;
+    }
+
+    res.json(buildCustomerSnapshotResponse(await saveCustomerOrders(brand, scopeId, payload)));
+  };
+
+  const persistCustomerLikesImpl = async (req: Request, res: Response) => {
+    const brand = getApiBrand(req, res);
+    const scopeId = getApiScopeId(req, res);
+
+    if (!brand || !scopeId) {
+      return;
+    }
+
+    const payload = unwrapLikesPayload(req.body);
+
+    if (!payload) {
+      res.status(400).json({
+        error: "Likes payload must be a JSON array or wrapped likes collection.",
+      });
+      return;
+    }
+
+    res.json(buildCustomerSnapshotResponse(await saveCustomerLikes(brand, scopeId, payload)));
+  };
+
+  const persistCustomerCartImpl = async (req: Request, res: Response) => {
+    const brand = getApiBrand(req, res);
+    const scopeId = getApiScopeId(req, res);
+
+    if (!brand || !scopeId) {
+      return;
+    }
+
+    const payload = unwrapCartPayload(req.body);
+
+    if (!payload) {
+      res.status(400).json({
+        error: "Cart payload must be a JSON array or wrapped cart collection.",
+      });
+      return;
+    }
+
+    res.json(buildCustomerSnapshotResponse(await saveCustomerCart(brand, scopeId, payload)));
+  };
+
+  const persistCustomerOrders = asyncRoute(persistCustomerOrdersImpl);
+  const persistCustomerLikes = asyncRoute(persistCustomerLikesImpl);
+  const persistCustomerCart = asyncRoute(persistCustomerCartImpl);
+  const persistCustomerResource = asyncRoute(async (req, res) => {
+    const resource = getApiCustomerResource(req, res);
+
+    if (res.headersSent) {
+      return;
+    }
+
+    if (!resource) {
+      res.status(400).json({
+        error: "Customer state resource is required.",
+      });
+      return;
+    }
+
+    switch (resource) {
+      case "orders":
+        await persistCustomerOrdersImpl(req, res);
+        return;
+      case "likes":
+        await persistCustomerLikesImpl(req, res);
+        return;
+      case "cart":
+        await persistCustomerCartImpl(req, res);
+        return;
+      default:
+        res.status(400).json({
+          error: "Unsupported customer state resource.",
+        });
+    }
+  });
+
+  app.put("/api/customer-state/:brand/:scopeId/orders", persistCustomerOrders);
+  app.post("/api/customer-state/:brand/:scopeId/orders", persistCustomerOrders);
+  app.put("/api/customer-state/:brand/:scopeId/likes", persistCustomerLikes);
+  app.post("/api/customer-state/:brand/:scopeId/likes", persistCustomerLikes);
+  app.put("/api/customer-state/:brand/:scopeId/cart", persistCustomerCart);
+  app.post("/api/customer-state/:brand/:scopeId/cart", persistCustomerCart);
+  app.put("/api/customer-state/:brand/:resource", persistCustomerResource);
+  app.post("/api/customer-state/:brand/:resource", persistCustomerResource);
+  app.put("/api/customer-state/:brand", persistCustomerResource);
+  app.post("/api/customer-state/:brand", persistCustomerResource);
+  app.put("/api/customer-state", persistCustomerResource);
+  app.post("/api/customer-state", persistCustomerResource);
 
   const adminPersistencePaths: string[] = [
     "/api/admin/persistence",

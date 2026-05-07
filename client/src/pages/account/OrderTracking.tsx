@@ -9,12 +9,13 @@ import {
   getCarrierLabel,
   getEstimatedDeliveryLabel,
   getOrderById,
+  getOrdersStorageKey,
   getOrderStatusClasses,
   getOrderStatusLabel,
   getTrackingTimeline,
-  isOrdersStorageKeyForBrand,
   type StoredOrderRecord,
 } from '@/lib/orderStorage';
+import { normalizeStorageScopeId } from '@/lib/storageScope';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -24,6 +25,12 @@ import {
   Truck,
 } from 'lucide-react';
 import { Link, useParams } from 'wouter';
+
+type OrdersChangedDetail = {
+  brand?: string;
+  scopeId?: string;
+  source?: 'local' | 'remote';
+};
 
 function formatOrderDate(value: string) {
   const parsedDate = new Date(value);
@@ -63,16 +70,31 @@ export default function OrderTracking() {
       return;
     }
 
+    const activeScopeId = normalizeStorageScopeId(user?.id);
+    const activeOrdersStorageKey = getOrdersStorageKey(activeBrand, user?.id);
+
     const loadOrder = () => {
       setOrder(getOrderById(activeBrand, id, user?.id));
     };
 
     const handleOrdersChanged = (event: Event) => {
-      const detailBrand = (event as CustomEvent<{ brand?: string }>).detail?.brand;
+      const detail = (event as CustomEvent<OrdersChangedDetail>).detail;
+      const detailBrand = detail?.brand;
+      const isScopedOrdersEvent = detail?.source === 'local' || detail?.source === 'remote';
 
-      if (!detailBrand || detailBrand === activeBrand) {
-        loadOrder();
+      if (detailBrand && detailBrand !== activeBrand) {
+        return;
       }
+
+      if (isScopedOrdersEvent) {
+        if (detail?.scopeId !== activeScopeId) {
+          return;
+        }
+      } else if (detail?.scopeId && detail.scopeId !== activeScopeId) {
+        return;
+      }
+
+      loadOrder();
     };
 
     const handleStorage = (event: StorageEvent) => {
@@ -81,7 +103,7 @@ export default function OrderTracking() {
         return;
       }
 
-      if (AUTH_STORAGE_KEYS.has(event.key) || isOrdersStorageKeyForBrand(event.key, activeBrand)) {
+      if (AUTH_STORAGE_KEYS.has(event.key) || event.key === activeOrdersStorageKey) {
         loadOrder();
       }
     };

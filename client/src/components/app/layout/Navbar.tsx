@@ -17,8 +17,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useBrand } from '@/contexts/BrandContext';
 import { useStorefrontSettings } from '@/hooks/useStorefrontSettings';
 import type { Category, CatalogProduct } from '@/lib/dataFetcher';
+import { normalizeStorageScopeId } from '@/lib/storageScope';
 import {
-  isLikesStorageKeyForBrand,
+  getLikesStorageKey,
   readBrandLikeIds,
 } from '@/lib/storefrontStorage';
 import {
@@ -34,6 +35,7 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from '@/components/shared/ui/dropdown-menu';
+import { ThemeSelector } from '@/components/shared/ui/ThemeSelector';
 
 interface NavbarProps {
   categories: Category[];
@@ -596,7 +598,7 @@ export function Navbar({
   const settings = useStorefrontSettings(brand);
   const [, setLocation] = useLocation();
   const [favoriteCount, setFavoriteCount] = useState(0);
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(true);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [hasLogoError, setHasLogoError] = useState(false);
   const [localCategorySummary, setLocalCategorySummary] = useState<LocalCategorySummary>(
     createEmptyLocalCategorySummary,
@@ -614,6 +616,9 @@ export function Navbar({
   const brandInitial = settings.siteName.trim().charAt(0).toUpperCase() || brand.charAt(0).toUpperCase();
 
   useEffect(() => {
+    const activeScopeId = normalizeStorageScopeId(userId);
+    const likesStorageKey = getLikesStorageKey(brand, userId);
+
     const syncFavoriteCount = () => {
       try {
         setFavoriteCount(readBrandLikeIds(brand, userId).length);
@@ -623,15 +628,30 @@ export function Navbar({
     };
 
     const handleLikesChanged = (event: Event) => {
-      const storageKey = (event as CustomEvent<{ storageKey?: string }>).detail?.storageKey;
+      const detail = (event as CustomEvent<{
+        storageKey?: string;
+        brand?: typeof brand;
+        scopeId?: string;
+        source?: 'local' | 'remote';
+      }>).detail;
 
-      if (!storageKey || isLikesStorageKeyForBrand(storageKey, brand)) {
-        syncFavoriteCount();
+      if (detail?.brand && detail.brand !== brand) {
+        return;
       }
+
+      if (detail?.scopeId && detail.scopeId !== activeScopeId) {
+        return;
+      }
+
+      if (detail?.storageKey && detail.storageKey !== likesStorageKey) {
+        return;
+      }
+
+      syncFavoriteCount();
     };
 
     const handleStorageChange = (event: StorageEvent) => {
-      if (!event.key || isLikesStorageKeyForBrand(event.key, brand)) {
+      if (!event.key || event.key === likesStorageKey) {
         syncFavoriteCount();
       }
     };
@@ -744,7 +764,7 @@ export function Navbar({
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-md border-b border-primary/10 shadow-sm">
+    <header className="sticky top-0 z-50 w-full border-b border-primary/10 bg-background/95 shadow-sm backdrop-blur-md">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
         <div
           className="flex items-center flex-shrink-0 cursor-pointer min-w-0"
@@ -752,6 +772,16 @@ export function Navbar({
             setLocation(homePath);
             onCategorySelect('');
           }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setLocation(homePath);
+              onCategorySelect('');
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label={`Volver al inicio de ${settings.siteName}`}
         >
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/10 via-white to-secondary/15 shadow-sm">
@@ -779,17 +809,24 @@ export function Navbar({
           </div>
         </div>
 
-        <div className="flex-1 max-w-md hidden md:flex relative group">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-          <Input
-            placeholder={
-              isNikken
-                ? 'Buscar agua, descanso, nutricion...'
-                : 'Buscar perfumes, cremas, maquillaje...'
-            }
-            onChange={(event) => onSearchChange(event.target.value)}
-            className="w-full pl-9 rounded-full bg-secondary/10 border-transparent focus-visible:ring-primary/20 focus-visible:bg-white transition-all text-sm body"
-          />
+        <div className="flex-1 max-w-md hidden md:flex items-center gap-4 relative group">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+            <Input
+              placeholder={
+                isNikken
+                  ? 'Buscar agua, descanso, nutricion...'
+                  : 'Buscar perfumes, cremas, maquillaje...'
+              }
+              onChange={(event) => onSearchChange(event.target.value)}
+              className="w-full pl-9 rounded-full bg-secondary/10 border-transparent focus-visible:ring-primary/20 focus-visible:bg-background transition-all text-sm body"
+            />
+          </div>
+          {!isNikken && (
+            <div className="hidden xl:block">
+              <ThemeSelector />
+            </div>
+          )}
         </div>
 
         {isNikken && (
@@ -816,8 +853,8 @@ export function Navbar({
           <button
             onClick={handleMobileSearchToggle}
             className="md:hidden p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-primary/10 transition-colors"
-            title={isMobileSearchOpen ? 'Ocultar busqueda' : 'Mostrar busqueda'}
-            aria-label={isMobileSearchOpen ? 'Ocultar busqueda' : 'Mostrar busqueda'}
+            title={isMobileSearchOpen ? 'Ocultar búsqueda' : 'Mostrar búsqueda'}
+            aria-label={isMobileSearchOpen ? 'Ocultar búsqueda' : 'Mostrar búsqueda'}
             aria-expanded={isMobileSearchOpen}
             aria-controls={mobileSearchInputId}
           >
@@ -829,6 +866,7 @@ export function Navbar({
                 <button
                   className="flex items-center gap-2 rounded-full border border-primary/10 bg-white/80 py-1 pl-1 pr-2 text-foreground/80 hover:text-primary hover:bg-primary/10 transition-colors relative max-w-[11rem]"
                   title="Mi cuenta"
+                  aria-label="Abrir menu de cuenta"
                 >
                   <div className="w-7 h-7 rounded-full overflow-hidden border border-primary/30 shrink-0">
                     {user.avatar ? (
@@ -974,7 +1012,7 @@ export function Navbar({
                       className="rounded-xl gap-3 px-3 py-2 cursor-pointer focus:bg-primary/5"
                     >
                       <Settings className="w-4 h-4 text-primary" />
-                      <span className="font-semibold text-slate-700">Configuracion</span>
+                      <span className="font-semibold text-slate-700">Configuración</span>
                     </DropdownMenuItem>
                   </>
                 )}
@@ -984,7 +1022,7 @@ export function Navbar({
                   className="rounded-xl gap-3 px-3 py-2 text-rose-600 focus:bg-rose-50 cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
-                  <span className="font-bold">Cerrar sesion</span>
+                  <span className="font-bold">Cerrar sesión</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -992,7 +1030,8 @@ export function Navbar({
             <button
               onClick={loginWithGoogle}
               className="p-2 text-foreground/80 hover:text-primary rounded-full hover:bg-primary/10 transition-colors relative"
-              title="Iniciar sesion"
+              title="Iniciar sesión"
+              aria-label="Iniciar sesión"
             >
               <UserIcon className="w-5 h-5" />
             </button>
@@ -1002,6 +1041,7 @@ export function Navbar({
             onClick={() => setLocation(favoritesPath)}
             className="p-2 text-foreground/80 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors relative"
             title="Mis favoritos"
+            aria-label="Abrir favoritos"
           >
             <Heart className="w-5 h-5" />
             {favoriteCount > 0 && (
@@ -1014,6 +1054,7 @@ export function Navbar({
             onClick={onCartClick}
             className="p-2 bg-primary text-white rounded-full hover:bg-primary/90 transition-transform hover:scale-105 shadow-md flex items-center justify-center relative"
             title="Mi pedido"
+            aria-label={`Abrir carrito con ${cartItemCount} producto${cartItemCount === 1 ? '' : 's'}`}
           >
             <ShoppingBag className="w-5 h-5" />
             {cartItemCount > 0 && (
@@ -1025,11 +1066,12 @@ export function Navbar({
         </div>
       </div>
 
-      <nav className="border-t border-primary/5 bg-white/50">
+      <nav className="border-t border-primary/5 bg-background/70">
         <div className="container mx-auto px-4 overflow-x-auto custom-scrollbar flex items-center py-2 md:py-3 gap-2 md:gap-6">
           <button
             onClick={() => onCategorySelect('')}
-            className={`whitespace-nowrap heading text-sm md:text-base font-bold transition-colors py-1 px-3 md:px-0 rounded-full md:rounded-none md:border-b-2 ${
+            aria-current={activeCategory === '' ? 'page' : undefined}
+            className={`shrink-0 whitespace-nowrap heading text-sm md:text-base font-bold transition-colors py-1 px-3 md:px-0 rounded-full md:rounded-none md:border-b-2 ${
               activeCategory === ''
                 ? 'bg-primary text-white md:bg-transparent md:text-primary md:border-primary'
                 : 'text-foreground/70 hover:text-primary md:border-transparent md:hover:border-primary/50'
@@ -1051,6 +1093,7 @@ export function Navbar({
               key={category.id}
               onClick={() => onCategorySelect(category.id)}
               title={category.name}
+              aria-current={activeCategory === category.id ? 'page' : undefined}
               className={`inline-flex max-w-[11rem] shrink-0 items-center gap-2 whitespace-nowrap heading text-sm md:max-w-[14rem] md:text-base font-bold transition-colors py-1 px-3 md:px-0 rounded-full md:rounded-none md:border-b-2 ${
                 activeCategory === category.id
                   ? 'bg-primary text-white md:bg-transparent md:text-primary md:border-primary'
