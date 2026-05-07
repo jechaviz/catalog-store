@@ -64,42 +64,42 @@ export function SocialSharePanel({ product, primaryColor }: SocialSharePanelProp
 
   return (
     <div
-      className="flex flex-col gap-6 p-6 rounded-3xl bg-background/40 backdrop-blur-xl border border-white/40 shadow-xl"
-      style={{ boxShadow: `0 24px 60px ${primaryColor}20` }}
+      className="grid gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-3 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+      style={{ boxShadow: `0 12px 28px ${primaryColor}12` }}
     >
-      <div className="flex flex-col gap-1">
-        <h3 className="heading text-xl font-bold text-foreground">Kit Social {product.brand}</h3>
-        <p className="body text-sm text-muted-foreground">Genera contenido impecable para tus redes en segundos.</p>
+      <div className="flex flex-col gap-0.5">
+        <h3 className="heading text-sm font-black text-foreground">Kit Social {product.brand}</h3>
+        <p className="body text-xs text-muted-foreground">Imagenes listas para compartir.</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:w-[330px]">
         <Button
           onClick={() => handleExport('share')}
           disabled={!!isExporting}
-          className="flex flex-col items-center justify-center gap-3 h-28 rounded-2xl bg-foreground hover:bg-foreground/90 text-background transition-all group scale-100 hover:scale-[1.02]"
+          className="flex h-10 items-center justify-center gap-2 rounded-lg bg-foreground px-2 text-background transition-all hover:bg-foreground/90"
         >
-          {isExporting === 'share' ? <Loader2 className="w-6 h-6 animate-spin" /> : <Share2 className="w-6 h-6 group-hover:scale-110 transition-transform" />}
-          <span className="text-xs font-bold uppercase tracking-wider">Compartir</span>
+          {isExporting === 'share' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+          <span className="truncate text-[11px] font-bold uppercase tracking-wide">Compartir</span>
         </Button>
 
         <Button
           onClick={() => handleExport('post')}
           disabled={!!isExporting}
           variant="outline"
-          className="flex flex-col items-center justify-center gap-3 h-28 rounded-2xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all group scale-100 hover:scale-[1.02]"
+          className="flex h-10 items-center justify-center gap-2 rounded-lg border px-2 transition-all hover:border-primary hover:bg-primary/5"
         >
-          {isExporting === 'post' ? <Loader2 className="w-6 h-6 animate-spin text-primary" /> : <Instagram className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />}
-          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground group-hover:text-primary">Post (1:1)</span>
+          {isExporting === 'post' ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Instagram className="h-4 w-4 text-muted-foreground" />}
+          <span className="truncate text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Post</span>
         </Button>
 
         <Button
           onClick={() => handleExport('story')}
           disabled={!!isExporting}
           variant="outline"
-          className="flex flex-col items-center justify-center gap-3 h-28 rounded-2xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all group scale-100 hover:scale-[1.02]"
+          className="flex h-10 items-center justify-center gap-2 rounded-lg border px-2 transition-all hover:border-primary hover:bg-primary/5"
         >
-          {isExporting === 'story' ? <Loader2 className="w-6 h-6 animate-spin text-primary" /> : <Facebook className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />}
-          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground group-hover:text-primary">Story (9:16)</span>
+          {isExporting === 'story' ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Facebook className="h-4 w-4 text-muted-foreground" />}
+          <span className="truncate text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Story</span>
         </Button>
       </div>
     </div>

@@ -140,8 +140,8 @@
   --secondary-foreground: #FFFFFF;
   --muted: #E2E8F0;       /* Gris azulado muy tenue */
   --muted-foreground: #64748B;
-  --accent: #84CC16;      /* Verde lima para vitalidad */
-  --accent-foreground: #FFFFFF;
+  --accent: #EAF7F1;      /* Verde wellness suave para hover/superficies */
+  --accent-foreground: #0B5F3B;
   --destructive: #EF4444;
   --destructive-foreground: #FFFFFF;
   --border: #CBD5E1;
@@ -199,6 +199,41 @@
   --sidebar-accent-foreground: #F9FAFB;
   --sidebar-border: #374151;
   --sidebar-ring: #DD5A24;
+}
+
+.dark .theme-nikken {
+  --primary: #27D17F;
+  --primary-foreground: #04110B;
+  --sidebar-primary: #27D17F;
+  --sidebar-primary-foreground: #04110B;
+  --chart-1: #27D17F;
+  --chart-2: #49BFE8;
+  --chart-3: #A3E635;
+  --chart-4: #22D3EE;
+  --chart-5: #5EEAD4;
+  --background: #071211;
+  --foreground: #EAFDF3;
+  --card: #0E1D1A;
+  --card-foreground: #EAFDF3;
+  --popover: #0E1D1A;
+  --popover-foreground: #EAFDF3;
+  --secondary: #49BFE8;
+  --secondary-foreground: #031014;
+  --muted: #162A26;
+  --muted-foreground: #A8BDB5;
+  --accent: #1F3D35;
+  --accent-foreground: #EAFDF3;
+  --destructive: #FB7185;
+  --destructive-foreground: #FFFFFF;
+  --border: #29463E;
+  --input: #132521;
+  --ring: #27D17F;
+  --sidebar: #071211;
+  --sidebar-foreground: #EAFDF3;
+  --sidebar-accent: #132521;
+  --sidebar-accent-foreground: #EAFDF3;
+  --sidebar-border: #29463E;
+  --sidebar-ring: #27D17F;
 }
 
 @layer base {
@@ -284,19 +319,86 @@
   }
 }
 
+/* --- Premium Animations & Polish --- */
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+  background-clip: padding-box;
+}
+
+/* Glassmorphism Classes */
+.glass {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+}
+
+.dark .glass {
+  background-color: rgba(31, 41, 55, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Hover Effects */
+.hover-lift {
+  @apply transition-transform duration-300 hover:-translate-y-1;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px -5px var(--primary);
+}
+
+/* Reveal Animation */
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-reveal {
+  animation: reveal 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer components {
   /**
    * Custom container utility that centers content and adds responsive padding.
-   *
-   * This overrides Tailwind's default container behavior to:
-   * - Auto-center content (mx-auto)
-   * - Add responsive horizontal padding
-   * - Set max-width for large screens
-   *
-   * Usage: <div className="container">...</div>
-   *
-   * For custom widths, use max-w-* utilities directly:
-   * <div className="max-w-6xl mx-auto px-4">...</div>
    */
   .container {
     width: 100%;
